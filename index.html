@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Slingshot AR: FIXED</title>
+    <title>Slingshot AR: CONNECTED</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
         
@@ -37,17 +37,18 @@
     
     <div id="hud">
         <div class="score-val" id="score">0</div>
-        <div id="status">Touch & Drag Anywhere to Shoot</div>
+        <div id="status">Drag Down to Shoot</div>
     </div>
 
 <script>
 // --- CONFIGURATION ---
 const C = {
-    gravity: 0.6,
-    zSpeed: 50,          // Fast shot
+    gravity: 0.4,        // Lower gravity for longer flight
+    zSpeed: 60,          // Faster depth speed
     targetDist: 800,     // Distance to hit
-    hitWindow: 150,      // Forgiveness window
-    focalLength: 800
+    hitWindow: 200,      // Forgiveness window
+    focalLength: 850,
+    anchorYRatio: 0.5    // Anchors are at 50% screen height
 };
 
 // --- STATE ---
@@ -69,57 +70,39 @@ window.onload = async () => {
     resize();
     window.addEventListener('resize', resize);
 
-    // --- INPUT HANDLERS (MOBILE OPTIMIZED) ---
-    // We attach directly to the canvas to prevent scrolling issues
-    
-    canvas.addEventListener('touchstart', (e) => {
-        e.preventDefault(); // Stop scrolling
-        if (flyingEgg) return; // Wait for current shot to finish
-        
-        const touch = e.touches[0];
-        // Only start drag if touching bottom half
-        if (touch.clientY > window.innerHeight * 0.4) {
-            dragging = true;
-            dragPos = { x: touch.clientX, y: touch.clientY };
-        }
-    }, { passive: false });
-
-    canvas.addEventListener('touchmove', (e) => {
-        e.preventDefault(); // Stop scrolling
-        if (dragging) {
-            const touch = e.touches[0];
-            dragPos = { x: touch.clientX, y: touch.clientY };
-        }
-    }, { passive: false });
-
-    canvas.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        if (dragging) {
-            dragging = false;
-            fire();
-        }
-    }, { passive: false });
-
-    // Also support mouse for testing on PC
-    canvas.addEventListener('mousedown', (e) => {
+    // --- INPUT HANDLERS ---
+    const startDrag = (x, y) => {
         if (flyingEgg) return;
-        if (e.clientY > window.innerHeight * 0.4) {
+        if (y > window.innerHeight * 0.4) {
             dragging = true;
-            dragPos = { x: e.clientX, y: e.clientY };
+            dragPos = { x, y };
         }
-    });
-    window.addEventListener('mousemove', (e) => { if (dragging) dragPos = { x: e.clientX, y: e.clientY }; });
-    window.addEventListener('mouseup', () => { if (dragging) { dragging = false; fire(); } });
+    };
+    
+    const moveDrag = (x, y) => {
+        if (dragging) dragPos = { x, y };
+    };
+    
+    const endDrag = () => {
+        if (dragging) { dragging = false; fire(); }
+    };
 
+    // Touch
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); startDrag(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
+    canvas.addEventListener('touchmove', e => { e.preventDefault(); moveDrag(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
+    canvas.addEventListener('touchend', e => { e.preventDefault(); endDrag(); }, {passive:false});
+    
+    // Mouse
+    canvas.addEventListener('mousedown', e => startDrag(e.clientX, e.clientY));
+    window.addEventListener('mousemove', e => moveDrag(e.clientX, e.clientY));
+    window.addEventListener('mouseup', endDrag);
 
     // --- AI START ---
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         video.srcObject = stream;
         video.onloadedmetadata = () => { initAI(); };
-    } catch(e) { 
-        alert("Camera Error: " + e);
-    }
+    } catch(e) { console.log(e); }
 
     loop();
 };
@@ -130,24 +113,24 @@ function resize() { canvas.width = window.innerWidth; canvas.height = window.inn
 
 function fire() {
     const cx = window.innerWidth / 2;
-    const cy = window.innerHeight * 0.5; // Anchor height
+    const anchorY = window.innerHeight * C.anchorYRatio; 
     
-    // Calculate vector
-    const dx = cx - dragPos.x;
-    const dy = cy - dragPos.y;
+    // Vector from Pull Point -> Anchor
+    let dx = cx - dragPos.x;
+    let dy = anchorY - dragPos.y; 
     
-    // Minimum pull check
-    const dist = Math.sqrt(dx*dx + dy*dy);
-    if (dist < 30) return; // Tap shouldn't fire
+    // Cap the upward angle so it doesn't fly off screen
+    // If dy is too negative (meaning we pulled WAY down), we flatten the trajectory
+    if (dy < -200) dy = -50; 
 
     // Launch!
     flyingEgg = {
         x: cx,          
-        y: cy + 50,
+        y: anchorY + 100, // Start launch slightly below anchor
         z: 0,           
-        vx: dx * 0.18,  // Horizontal Power
-        vy: dy * 0.18,  // Vertical Power
-        vz: C.zSpeed    // Depth Speed
+        vx: dx * 0.15,    // Horizontal drift
+        vy: dy * 0.12,    // Vertical Arc (Reduced multiplier to keep it on screen)
+        vz: C.zSpeed      // Fast forward
     };
     
     shake = 10; 
@@ -169,11 +152,8 @@ function update() {
     flyingEgg.z += flyingEgg.vz;
     flyingEgg.vy += C.gravity; 
 
-    // Missed
-    if (flyingEgg.z > 2000 || flyingEgg.y > 2000) {
-        flyingEgg = null;
-        return;
-    }
+    // Kill if too far
+    if (flyingEgg.z > 2500) { flyingEgg = null; return; }
 
     // Collision Check
     if (Math.abs(flyingEgg.z - C.targetDist) < C.hitWindow) {
@@ -228,23 +208,37 @@ function loop() {
         shake *= 0.9;
     }
 
-    // 1. Draw Particles (Behind)
+    // 1. Draw Particles
     for (let p of particles) {
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
         ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fill();
     }
     ctx.globalAlpha = 1.0;
 
-    // 2. Draw Game Elements
+    // 2. Determine "Apex" Point (Where pouch is)
+    let apexX, apexY;
+    
     if (dragging && !flyingEgg) {
-        // Dragging
-        drawBands(dragPos.x, dragPos.y);
-        drawPouch(dragPos.x, dragPos.y, true);
-        drawEgg(dragPos.x, dragPos.y, 1.0); 
-    } else if (flyingEgg) {
-        // Flying
-        drawIdleBands(); // Snap back
-        
+        // Pouch follows finger
+        apexX = dragPos.x;
+        apexY = dragPos.y;
+    } else {
+        // Idle State (Hanging in middle)
+        apexX = canvas.width / 2;
+        apexY = (canvas.height * C.anchorYRatio) + 200; // Hangs 200px below anchor
+    }
+
+    // 3. Draw Bands (Connecting Anchors -> Apex)
+    if (!flyingEgg || (flyingEgg && flyingEgg.z > 50)) { // Hide bands right after shot
+         drawConnectedBands(apexX, apexY);
+    }
+
+    // 4. Draw Pouch & Egg at Apex
+    if (!flyingEgg) {
+        drawPouch(apexX, apexY);
+        drawEgg(apexX, apexY, 1.0);
+    } else {
+        // Draw Flying Egg
         const scale = C.focalLength / (C.focalLength + flyingEgg.z);
         const cx = window.innerWidth / 2;
         const cy = window.innerHeight / 2;
@@ -252,13 +246,6 @@ function loop() {
         const sy = (flyingEgg.y - cy) * scale + cy;
 
         drawEgg(sx, sy, scale);
-    } else {
-        // Idle
-        drawIdleBands();
-        // Draw Egg SITTING in the pouch
-        const h = canvas.height;
-        const droop = h * 0.8; 
-        drawEgg(canvas.width/2, droop - 15, 1.0);
     }
 
     if (shake > 0) ctx.restore();
@@ -266,63 +253,50 @@ function loop() {
 
 // --- DRAWING HELPERS ---
 
-function drawIdleBands() {
-    const w = canvas.width, h = canvas.height;
-    const ay = h * 0.5; // Anchor
-    const droop = h * 0.8; 
-
+function drawConnectedBands(tipX, tipY) {
+    const w = canvas.width;
+    const ay = canvas.height * C.anchorYRatio; // Anchor Y
+    
     ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    
+    // Left Band
     ctx.beginPath();
-    ctx.moveTo(0, ay);
-    // Draw nice hanging curve
-    ctx.quadraticCurveTo(w/2, droop + 20, w, ay);
-    
-    ctx.lineWidth = 12; ctx.strokeStyle = "#3e2723"; ctx.stroke();
-    ctx.lineWidth = 5; ctx.strokeStyle = "#a1887f"; ctx.stroke();  
-    
-    drawPouch(w/2, droop, false);
-}
-
-function drawBands(x, y) {
-    const w = canvas.width, h = canvas.height;
-    const ay = h * 0.5;
-
-    ctx.lineCap = "round";
-    ctx.beginPath(); ctx.moveTo(0, ay); ctx.lineTo(x, y);
+    ctx.moveTo(0, ay); 
+    ctx.quadraticCurveTo(w * 0.2, tipY, tipX, tipY); // Curve towards pouch
     ctx.lineWidth = 14; ctx.strokeStyle = "#3e2723"; ctx.stroke();
     ctx.lineWidth = 6; ctx.strokeStyle = "#a1887f"; ctx.stroke();
-    
-    ctx.beginPath(); ctx.moveTo(w, ay); ctx.lineTo(x, y);
+
+    // Right Band
+    ctx.beginPath();
+    ctx.moveTo(w, ay); 
+    ctx.quadraticCurveTo(w * 0.8, tipY, tipX, tipY);
     ctx.lineWidth = 14; ctx.strokeStyle = "#3e2723"; ctx.stroke();
     ctx.lineWidth = 6; ctx.strokeStyle = "#a1887f"; ctx.stroke();
 }
 
-function drawPouch(x, y, rotated) {
+function drawPouch(x, y) {
     ctx.save();
     ctx.translate(x, y);
-    if (rotated) {
-        const rot = (x - window.innerWidth/2) * 0.002;
-        ctx.rotate(rot);
-    }
+    
+    // Rotate based on X position to look realistic
+    const rot = (x - window.innerWidth/2) * 0.001;
+    ctx.rotate(rot);
     
     ctx.fillStyle = "#4e342e";
     ctx.strokeStyle = "#271c19";
     ctx.lineWidth = 2;
     
     ctx.beginPath();
-    ctx.roundRect(-25, -20, 50, 40, 5);
+    ctx.roundRect(-30, -25, 60, 50, 8);
     ctx.fill();
     ctx.stroke();
     
-    ctx.setLineDash([3, 3]);
-    ctx.strokeStyle = "#d7ccc8";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(-22, -17, 44, 34);
     ctx.restore();
 }
 
 function drawEgg(x, y, scale) {
-    const r = 20 * scale;
+    const r = 22 * scale;
     if (r < 1) return;
 
     ctx.beginPath();
@@ -355,7 +329,6 @@ async function initAI() {
         if(video.readyState===4) targets = (await model.detect(video)).filter(p=>p.class==='person');
     }, 200);
 }
-
 </script>
 </body>
 </html>
