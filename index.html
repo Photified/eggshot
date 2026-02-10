@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>AR Slingshot</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Arial', sans-serif; touch-action: none; }
+        
+        /* The Camera Feed */
+        #camera-video {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; z-index: 1; opacity: 1;
+        }
+
+        /* The Game Layer (Physics & UI) */
+        #game-canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 2;
+        }
+
+        /* UI Overlay */
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 3; pointer-events: none; /* Let touches pass through to canvas */
+        }
+
+        #score-board {
+            position: absolute; top: 20px; left: 20px;
+            color: white; font-size: 24px; font-weight: bold;
+            text-shadow: 2px 2px 4px #000;
+        }
+
+        #status {
+            position: absolute; bottom: 20px; left: 0; width: 100%;
+            text-align: center; color: yellow; font-size: 16px;
+            text-shadow: 1px 1px 2px #000;
+        }
+    </style>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+</head>
+<body>
+
+    <video id="camera-video" autoplay playsinline muted></video>
+    <canvas id="game-canvas"></canvas>
+    
+    <div id="ui-layer">
+        <div id="score-board">SCORE: <span id="score-val">0</span></div>
+        <div id="status">Loading AI Model...</div>
+    </div>
+
+<script>
+    // --- SETTINGS ---
+    const AI_INTERVAL_MS = 200; // Check for people every 200ms (5 FPS)
+    const TARGET_FPS = 30;      // Physics target FPS
+    
+    // --- GLOBALS ---
+    let score = 0;
+    let detectedPeople = []; // Stores the bounding boxes of people
+    let isModelLoaded = false;
+    let video, canvas, ctx;
+    let engine, world, egg, sling, mouseConstraint;
+
+    // --- SETUP ---
+    window.onload = async () => {
+        video = document.getElementById('camera-video');
+        canvas = document.getElementById('game-canvas');
+        ctx = canvas.getContext('2d');
+
+        // 1. Start Camera
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: 'environment' } 
+            });
+            video.srcObject = stream;
+            await new Promise(r => video.onloadedmetadata = r);
+            document.getElementById('status').innerText = "Camera Active. Loading Brain...";
+        } catch (err) {
+            alert("Camera error: " + err);
+            return;
+        }
+
+        // 2. Resize Canvas to match screen
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 3. Init Physics
+        initPhysics();
+
+        // 4. Init AI
+        initAI();
+
+        // 5. Start Custom Loop (for 30 FPS cap & Custom Drawing)
+        lastTime = performance.now();
+        requestAnimationFrame(gameLoop);
+    };
+
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+
+    // --- PHYSICS ENGINE (Matter.js) ---
+    function initPhysics() {
+        const { Engine, World, Bodies, Constraint, Mouse, MouseConstraint } = Matter;
+
+        engine = Engine.create();
+        world = engine.world;
+
+        // Set gravity (Standard is 1, we can tweak if 30fps feels floaty)
+        engine.gravity.y = 1.0; 
+
+        // Create the Egg
+        const startX = window.innerWidth / 2;
+        const startY = window.innerHeight - 150;
+        
+        egg = Bodies.circle(startX, startY, 20, { 
+            restitution: 0.8, // Bouncy
+            density: 0.004,
+            label: "Egg"
+        });
+
+        // Create the Slingshot (Elastic Constraint)
+        sling = Constraint.create({
+            pointA: { x: startX, y: startY },
+            bodyB: egg,
+            stiffness: 0.05,
+            length: 1
+        });
+
+        World.add(world, [egg, sling]);
+
+        // Add Mouse/Touch Interaction
+        const mouse = Mouse.create(canvas);
+        mouseConstraint = MouseConstraint.create(engine, {
+            mouse: mouse,
+            constraint: { stiffness: 0.2, render: { visible: false } }
+        });
+        World.add(world, mouseConstraint);
+    }
+
+    // --- AI LOGIC (TensorFlow.js) ---
+    async function initAI() {
+        const model = await cocoSsd.load();
+        isModelLoaded = true;
+        document.getElementById('status').innerText = "SYSTEM READY: Drag the ball to shoot!";
+        
+        // Run detection loop separately at 5 FPS
+        setInterval(async () => {
+            if (video.readyState === 4) { // 4 means HAVE_ENOUGH_DATA
+                const predictions = await model.detect(video);
+                // Filter only people
+                detectedPeople = predictions.filter(p => p.class === 'person');
+            }
+        }, AI_INTERVAL_MS);
+    }
+
+    // --- GAME LOOP ---
+    let lastTime = 0;
+    const fpsInterval = 1000 / TARGET_FPS;
+
+    function gameLoop(timestamp) {
+        requestAnimationFrame(gameLoop);
+
+        const elapsed = timestamp - lastTime;
+        if (elapsed < fpsInterval) return; // Skip frame to cap at 30 FPS
+
+        lastTime = timestamp - (elapsed % fpsInterval);
+
+        // 1. Update Physics
+        Matter.Engine.update(engine, elapsed); // Update physics by time passed
+
+        // 2. Clear Canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 3. Draw "Targets" (The People)
+        drawTargets();
+
+        // 4. Draw Slingshot Line
+        if (sling.bodyB) {
+            ctx.beginPath();
+            ctx.moveTo(sling.pointA.x, sling.pointA.y);
+            ctx.lineTo(egg.position.x, egg.position.y);
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 4;
+            ctx.stroke();
+        }
+
+        // 5. Draw Egg
+        ctx.beginPath();
+        ctx.arc(egg.position.x, egg.position.y, 20, 0, 2 * Math.PI);
+        ctx.fillStyle = "white";
+        ctx.fill();
+        ctx.stroke();
+
+        // 6. Game Logic Checks
+        checkFiring();
+        checkCollisions();
+        checkOutBounds();
+    }
+
+    function drawTargets() {
+        // We need to scale video coordinates to canvas coordinates
+        // Because video might be 640x480 but screen is 1920x1080
+        const scaleX = canvas.width / video.videoWidth;
+        const scaleY = canvas.height / video.videoHeight;
+
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.1)';
+
+        detectedPeople.forEach(person => {
+            const x = person.bbox[0] * scaleX;
+            const y = person.bbox[1] * scaleY;
+            const w = person.bbox[2] * scaleX;
+            const h = person.bbox[3] * scaleY;
+
+            // Draw a red box around detected people
+            ctx.strokeRect(x, y, w, h);
+            ctx.fillRect(x, y, w, h);
+            
+            // Draw Label
+            ctx.fillStyle = "red";
+            ctx.font = "12px Arial";
+            ctx.fillText("TARGET (+100)", x, y - 5);
+        });
+    }
+
+    // --- LOGIC HELPERS ---
+    
+    // Check if user let go of the ball
+    function checkFiring() {
+        if (!sling.bodyB) return; // Already fired
+
+        const mouse = mouseConstraint.mouse;
+        // If mouse is released (button -1) AND ball is far from center
+        if (mouse.button === -1) {
+            const dist = Matter.Vector.magnitude(Matter.Vector.sub(egg.position, sling.pointA));
+            
+            // If pulled back more than 20 pixels
+            if (dist > 20) {
+                // Release the egg!
+                sling.bodyB = null; 
+            }
+        }
+    }
+
+    // Check if egg hit a person box
+    function checkCollisions() {
+        if (sling.bodyB) return; // Don't count hits while holding the slingshot
+
+        const scaleX = canvas.width / video.videoWidth;
+        const scaleY = canvas.height / video.videoHeight;
+
+        for (let i = 0; i < detectedPeople.length; i++) {
+            let p = detectedPeople[i];
+            
+            // Map box to screen
+            let x = p.bbox[0] * scaleX;
+            let y = p.bbox[1] * scaleY;
+            let w = p.bbox[2] * scaleX;
+            let h = p.bbox[3] * scaleY;
+
+            // Simple point vs rectangle check
+            if (egg.position.x > x && egg.position.x < x + w &&
+                egg.position.y > y && egg.position.y < y + h) {
+                
+                // HIT!
+                handleHit();
+                break; // Only hit one person at a time
+            }
+        }
+    }
+
+    function handleHit() {
+        score += 100;
+        document.getElementById('score-val').innerText = score;
+        
+        // Visual Splat Effect (Stop the ball)
+        Matter.Body.setVelocity(egg, { x: 0, y: 0 });
+        Matter.Body.setStatic(egg, true); // Freeze it
+        
+        // Reset after 0.5 seconds
+        setTimeout(() => {
+            resetEgg();
+        }, 500);
+    }
+
+    function checkOutBounds() {
+        // If egg falls off screen, reset
+        if (egg.position.y > canvas.height + 50 || egg.position.x < -50 || egg.position.x > canvas.width + 50) {
+            resetEgg();
+        }
+    }
+
+    function resetEgg() {
+        // Remove old egg from world
+        Matter.World.remove(world, egg);
+        
+        // Create new egg at start pos
+        const startX = window.innerWidth / 2;
+        const startY = window.innerHeight - 150;
+        
+        egg = Matter.Bodies.circle(startX, startY, 20, { 
+            restitution: 0.8, density: 0.004 
+        });
+
+        // Reattach sling
+        sling.bodyB = egg;
+        
+        Matter.World.add(world, egg);
+    }
+
+</script>
+</body>
+</html>
