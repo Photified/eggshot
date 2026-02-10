@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Slingshot AR: ULTIMATE</title>
+    <title>Slingshot AR: FIXED</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Arial Black', sans-serif; touch-action: none; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
         
         #camera-feed {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover; z-index: 1; filter: contrast(1.1) brightness(0.8);
+            object-fit: cover; z-index: 1; filter: brightness(0.8);
         }
         #game-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;
@@ -17,20 +17,16 @@
         #hud {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;
         }
-        .score-box {
-            position: absolute; top: 20px; left: 20px;
-            color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        .score-val { 
+            position: absolute; top: 30px; left: 20px;
+            color: #ffeb3b; font-size: 40px; font-weight: bold; text-shadow: 2px 2px 0 #000;
         }
-        .score-label { font-size: 12px; letter-spacing: 2px; color: #f1c40f; }
-        .score-val { font-size: 48px; line-height: 1; }
-        
-        #loading {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.8); color: white; padding: 20px; border-radius: 10px;
+        #status {
+            position: absolute; bottom: 50px; width: 100%; text-align: center;
+            color: white; font-size: 14px; opacity: 0.7; text-transform: uppercase; letter-spacing: 2px;
         }
     </style>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
 </head>
@@ -40,26 +36,21 @@
     <canvas id="game-layer"></canvas>
     
     <div id="hud">
-        <div class="score-box">
-            <div class="score-label">CONFIRMED HITS</div>
-            <div class="score-val" id="score">0</div>
-        </div>
-        <div id="loading">Initializing Weapon Systems...</div>
+        <div class="score-val" id="score">0</div>
+        <div id="status">Touch & Drag Anywhere to Shoot</div>
     </div>
 
 <script>
 // --- CONFIGURATION ---
 const C = {
-    gravity: 0.8,        // Downward arc
-    zSpeed: 45,          // Speed into the distance
-    targetDist: 700,     // Distance where hits happen
-    hitWindow: 100,      // Tolerance for depth hit
-    focalLength: 900,    // Camera lens (Perspective)
-    shakePower: 15       // Screen shake intensity
+    gravity: 0.6,
+    zSpeed: 50,          // Fast shot
+    targetDist: 800,     // Distance to hit
+    hitWindow: 150,      // Forgiveness window
+    focalLength: 800
 };
 
 // --- STATE ---
-let engine, world;
 let canvas, ctx, video;
 let dragging = false;
 let dragPos = { x: 0, y: 0 };
@@ -74,48 +65,62 @@ window.onload = async () => {
     canvas = document.getElementById('game-layer');
     ctx = canvas.getContext('2d');
     video = document.getElementById('camera-feed');
+    
     resize();
     window.addEventListener('resize', resize);
 
-    // 1. Setup Matter.js (For the feel of the pull)
-    const { Engine, World, Mouse, MouseConstraint } = Matter;
-    engine = Engine.create();
-    world = engine.world;
+    // --- INPUT HANDLERS (MOBILE OPTIMIZED) ---
+    // We attach directly to the canvas to prevent scrolling issues
     
-    const mouse = Mouse.create(canvas);
-    const mc = MouseConstraint.create(engine, {
-        mouse: mouse,
-        constraint: { stiffness: 0.1, render: { visible: false } }
-    });
-    
-    Matter.Events.on(mc, 'mousedown', (e) => {
-        // Only allow grab if not already flying and in bottom half
-        if (!flyingEgg && e.mouse.position.y > window.innerHeight * 0.4) {
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault(); // Stop scrolling
+        if (flyingEgg) return; // Wait for current shot to finish
+        
+        const touch = e.touches[0];
+        // Only start drag if touching bottom half
+        if (touch.clientY > window.innerHeight * 0.4) {
             dragging = true;
-            dragPos = e.mouse.position;
+            dragPos = { x: touch.clientX, y: touch.clientY };
         }
-    });
-    
-    Matter.Events.on(mc, 'mousemove', (e) => {
-        if (dragging) dragPos = e.mouse.position;
-    });
-    
-    Matter.Events.on(mc, 'mouseup', (e) => {
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault(); // Stop scrolling
+        if (dragging) {
+            const touch = e.touches[0];
+            dragPos = { x: touch.clientX, y: touch.clientY };
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', (e) => {
+        e.preventDefault();
         if (dragging) {
             dragging = false;
             fire();
         }
-    });
-    World.add(world, mc);
+    }, { passive: false });
 
-    // 2. Setup AI
+    // Also support mouse for testing on PC
+    canvas.addEventListener('mousedown', (e) => {
+        if (flyingEgg) return;
+        if (e.clientY > window.innerHeight * 0.4) {
+            dragging = true;
+            dragPos = { x: e.clientX, y: e.clientY };
+        }
+    });
+    window.addEventListener('mousemove', (e) => { if (dragging) dragPos = { x: e.clientX, y: e.clientY }; });
+    window.addEventListener('mouseup', () => { if (dragging) { dragging = false; fire(); } });
+
+
+    // --- AI START ---
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         video.srcObject = stream;
         video.onloadedmetadata = () => { initAI(); };
-    } catch(e) { console.log("Camera Error", e); }
+    } catch(e) { 
+        alert("Camera Error: " + e);
+    }
 
-    // 3. Start Loop
     loop();
 };
 
@@ -127,57 +132,56 @@ function fire() {
     const cx = window.innerWidth / 2;
     const cy = window.innerHeight * 0.5; // Anchor height
     
-    // Calculate Aim Vector (Inverse of drag)
+    // Calculate vector
     const dx = cx - dragPos.x;
     const dy = cy - dragPos.y;
     
-    // Power based on stretch
-    const stretch = Math.sqrt(dx*dx + dy*dy);
-    if (stretch < 40) return; // Too weak
+    // Minimum pull check
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < 30) return; // Tap shouldn't fire
 
     // Launch!
     flyingEgg = {
         x: cx,          
-        y: cy + 100,    // Start slightly below anchor
+        y: cy + 50,
         z: 0,           
-        vx: dx * 0.15,  // Horizontal Drift
-        vy: dy * 0.15,  // Vertical Arc
-        vz: C.zSpeed    // Forward Speed
+        vx: dx * 0.18,  // Horizontal Power
+        vy: dy * 0.18,  // Vertical Power
+        vz: C.zSpeed    // Depth Speed
     };
     
-    shake = 5; // Slight recoil shake
+    shake = 10; 
 }
 
-function updatePhysics() {
-    // Update Particles
+function update() {
+    // Particles
     for(let i=particles.length-1; i>=0; i--) {
         let p = particles[i];
-        p.x += p.vx; p.y += p.vy; p.vy += 0.5; p.life -= 0.02;
+        p.x += p.vx; p.y += p.vy; p.vy += 0.5; p.life -= 0.03;
         if(p.life <= 0) particles.splice(i,1);
     }
 
     if (!flyingEgg) return;
 
-    // Move Egg in 3D Space
+    // 3D Physics
     flyingEgg.x += flyingEgg.vx;
     flyingEgg.y += flyingEgg.vy;
     flyingEgg.z += flyingEgg.vz;
-    flyingEgg.vy += C.gravity; // Gravity Arcs it down
+    flyingEgg.vy += C.gravity; 
 
-    // Check Bounds
+    // Missed
     if (flyingEgg.z > 2000 || flyingEgg.y > 2000) {
-        flyingEgg = null; // Missed/Gone
+        flyingEgg = null;
         return;
     }
 
-    // Check Collision (Only when at target depth)
+    // Collision Check
     if (Math.abs(flyingEgg.z - C.targetDist) < C.hitWindow) {
         checkHit();
     }
 }
 
 function checkHit() {
-    // Project 3D egg to 2D screen to see if it overlaps a person
     const scale = C.focalLength / (C.focalLength + flyingEgg.z);
     const screenX = (flyingEgg.x - window.innerWidth/2) * scale + window.innerWidth/2;
     const screenY = (flyingEgg.y - window.innerHeight/2) * scale + window.innerHeight/2;
@@ -185,6 +189,7 @@ function checkHit() {
     const sx = canvas.width / video.videoWidth;
     const sy = canvas.height / video.videoHeight;
 
+    let hit = false;
     for (let t of targets) {
         let tx = t.bbox[0] * sx;
         let ty = t.bbox[1] * sy;
@@ -192,25 +197,29 @@ function checkHit() {
         let th = t.bbox[3] * sy;
 
         if (screenX > tx && screenX < tx + tw && screenY > ty && screenY < ty + th) {
-            // HIT!
-            score++;
-            document.getElementById('score').innerText = score;
-            createExplosion(screenX, screenY, scale); 
-            shake = C.shakePower;
-            flyingEgg = null; // Destroy egg
+            hit = true;
             break;
         }
     }
+    
+    if (hit) {
+        score++;
+        document.getElementById('score').innerText = score;
+        createExplosion(screenX, screenY, scale); 
+        shake = 20;
+        flyingEgg = null; 
+    }
 }
 
-// --- RENDERING ---
+// --- RENDER ---
 
 function loop() {
     requestAnimationFrame(loop);
-    updatePhysics();
+    update();
+    
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Camera Shake
+    // Shake
     if (shake > 0) {
         let sx = (Math.random() - 0.5) * shake;
         let sy = (Math.random() - 0.5) * shake;
@@ -220,19 +229,22 @@ function loop() {
     }
 
     // 1. Draw Particles (Behind)
-    drawParticles();
+    for (let p of particles) {
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+        ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fill();
+    }
+    ctx.globalAlpha = 1.0;
 
-    // 2. Draw Slingshot
+    // 2. Draw Game Elements
     if (dragging && !flyingEgg) {
-        // Active Dragging
+        // Dragging
         drawBands(dragPos.x, dragPos.y);
         drawPouch(dragPos.x, dragPos.y, true);
-        drawEgg(dragPos.x, dragPos.y, 1.0); // Full size
+        drawEgg(dragPos.x, dragPos.y, 1.0); 
     } else if (flyingEgg) {
-        // Flying State
-        drawIdleBands();
+        // Flying
+        drawIdleBands(); // Snap back
         
-        // 3D Projection
         const scale = C.focalLength / (C.focalLength + flyingEgg.z);
         const cx = window.innerWidth / 2;
         const cy = window.innerHeight / 2;
@@ -241,8 +253,12 @@ function loop() {
 
         drawEgg(sx, sy, scale);
     } else {
-        // Idle State
+        // Idle
         drawIdleBands();
+        // Draw Egg SITTING in the pouch
+        const h = canvas.height;
+        const droop = h * 0.8; 
+        drawEgg(canvas.width/2, droop - 15, 1.0);
     }
 
     if (shake > 0) ctx.restore();
@@ -256,16 +272,15 @@ function drawIdleBands() {
     const droop = h * 0.8; 
 
     ctx.lineCap = "round";
-    // Draw Curve
     ctx.beginPath();
     ctx.moveTo(0, ay);
-    ctx.quadraticCurveTo(w/2, droop, w, ay);
+    // Draw nice hanging curve
+    ctx.quadraticCurveTo(w/2, droop + 20, w, ay);
     
-    ctx.lineWidth = 14; ctx.strokeStyle = "#3e2723"; ctx.stroke(); // Leather
-    ctx.lineWidth = 6; ctx.strokeStyle = "#a1887f"; ctx.stroke();  // Inner
+    ctx.lineWidth = 12; ctx.strokeStyle = "#3e2723"; ctx.stroke();
+    ctx.lineWidth = 5; ctx.strokeStyle = "#a1887f"; ctx.stroke();  
     
-    // Draw Pouch hanging
-    drawPouch(w/2, droop - 10, false);
+    drawPouch(w/2, droop, false);
 }
 
 function drawBands(x, y) {
@@ -273,12 +288,10 @@ function drawBands(x, y) {
     const ay = h * 0.5;
 
     ctx.lineCap = "round";
-    // Left Band
     ctx.beginPath(); ctx.moveTo(0, ay); ctx.lineTo(x, y);
     ctx.lineWidth = 14; ctx.strokeStyle = "#3e2723"; ctx.stroke();
     ctx.lineWidth = 6; ctx.strokeStyle = "#a1887f"; ctx.stroke();
     
-    // Right Band
     ctx.beginPath(); ctx.moveTo(w, ay); ctx.lineTo(x, y);
     ctx.lineWidth = 14; ctx.strokeStyle = "#3e2723"; ctx.stroke();
     ctx.lineWidth = 6; ctx.strokeStyle = "#a1887f"; ctx.stroke();
@@ -288,12 +301,10 @@ function drawPouch(x, y, rotated) {
     ctx.save();
     ctx.translate(x, y);
     if (rotated) {
-        // Tilt pouch based on horizontal drag
         const rot = (x - window.innerWidth/2) * 0.002;
         ctx.rotate(rot);
     }
     
-    // Fancy Leather Pouch
     ctx.fillStyle = "#4e342e";
     ctx.strokeStyle = "#271c19";
     ctx.lineWidth = 2;
@@ -303,12 +314,10 @@ function drawPouch(x, y, rotated) {
     ctx.fill();
     ctx.stroke();
     
-    // Stitching
     ctx.setLineDash([3, 3]);
     ctx.strokeStyle = "#d7ccc8";
     ctx.lineWidth = 1;
     ctx.strokeRect(-22, -17, 44, 34);
-    
     ctx.restore();
 }
 
@@ -321,43 +330,30 @@ function drawEgg(x, y, scale) {
     
     let grad = ctx.createRadialGradient(x - r/3, y - r/3, r/4, x, y, r);
     grad.addColorStop(0, "#fff");
-    grad.addColorStop(1, "#e0e0e0");
+    grad.addColorStop(1, "#ddd");
     
     ctx.fillStyle = grad;
     ctx.fill();
 }
 
 function createExplosion(x, y, scale) {
-    for(let i=0; i<30; i++) {
+    for(let i=0; i<25; i++) {
         particles.push({
             x: x, y: y,
-            vx: (Math.random()-0.5) * 20 * scale,
-            vy: (Math.random()-0.5) * 20 * scale,
+            vx: (Math.random()-0.5) * 30 * scale,
+            vy: (Math.random()-0.5) * 30 * scale,
             life: 1.0,
             color: Math.random() > 0.4 ? '#fdd835' : '#ffffff',
-            r: (Math.random() * 6 + 2) * scale
+            r: (Math.random() * 8 + 4) * scale
         });
     }
 }
 
-function drawParticles() {
-    for (let p of particles) {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = p.life;
-        ctx.fill();
-    }
-    ctx.globalAlpha = 1.0;
-}
-
-// --- AI ---
 async function initAI() {
     const model = await cocoSsd.load();
-    document.getElementById('loading').style.display = 'none';
     setInterval(async () => {
         if(video.readyState===4) targets = (await model.detect(video)).filter(p=>p.class==='person');
-    }, 150);
+    }, 200);
 }
 
 </script>
