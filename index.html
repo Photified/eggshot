@@ -95,15 +95,6 @@
         #prog-melon { background: rgba(76, 175, 80, 0.6); } 
         #prog-pie { background: rgba(238, 238, 238, 0.6); }   
 
-        .ammo-badge {
-            position: absolute; top: -5px; right: -5px;
-            background: #f44336; color: white; font-size: 10px; font-weight: bold;
-            width: 25px; height: 25px; border-radius: 50%; 
-            display: flex; align-items: center; justify-content: center;
-            border: 2px solid #111; opacity: 0; transition: opacity 0.3s;
-            z-index: 3;
-        }
-
         #unlock-msg {
             position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
             background: rgba(255, 235, 59, 0.95); color: black; padding: 15px 30px;
@@ -156,13 +147,11 @@
                 <div class="progress-fill" id="prog-melon"></div>
                 <div class="weapon-icon">🍉</div>
                 <div class="weapon-ammo" id="ammo-melon">0</div>
-                <div class="ammo-badge" id="badge-melon">+5</div>
             </div>
             <div class="weapon-card locked" id="w-pie" onclick="selectWeapon('pie')">
                 <div class="progress-fill" id="prog-pie"></div>
                 <div class="weapon-icon">🥧</div>
                 <div class="weapon-ammo" id="ammo-pie">0</div>
-                <div class="ammo-badge" id="badge-pie">+3</div>
             </div>
         </div>
         
@@ -328,12 +317,6 @@ function checkUnlocks() {
 function grantAmmo(type, amount) {
     if (score < WEAPONS[type].unlock) return;
     WEAPONS[type].ammo += amount;
-    
-    const badge = document.getElementById('badge-' + type);
-    badge.innerText = "+" + amount;
-    badge.style.opacity = 1;
-    badge.style.top = "-15px";
-    setTimeout(() => { badge.style.opacity = 0; badge.style.top = "-5px"; }, 1000);
     updateWeaponUI();
 }
 
