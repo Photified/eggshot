@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Slingshot AR: CONNECTED</title>
+    <title>EGGSHOT</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Arial Black', sans-serif; touch-action: none; }
         
         #camera-feed {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -17,13 +17,17 @@
         #hud {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;
         }
-        .score-val { 
-            position: absolute; top: 30px; left: 20px;
-            color: #ffeb3b; font-size: 40px; font-weight: bold; text-shadow: 2px 2px 0 #000;
+        .score-box {
+            position: absolute; top: 20px; left: 20px;
+            color: #fff; text-shadow: 2px 2px 0 #000;
         }
+        .score-val { font-size: 48px; color: #ffeb3b; line-height: 1; }
+        .streak-val { font-size: 20px; color: #ff5722; display: none; }
+        
         #status {
-            position: absolute; bottom: 50px; width: 100%; text-align: center;
-            color: white; font-size: 14px; opacity: 0.7; text-transform: uppercase; letter-spacing: 2px;
+            position: absolute; bottom: 80px; width: 100%; text-align: center;
+            color: white; font-size: 16px; text-transform: uppercase; letter-spacing: 2px;
+            text-shadow: 1px 1px 2px black; opacity: 0.8;
         }
     </style>
     
@@ -36,19 +40,23 @@
     <canvas id="game-layer"></canvas>
     
     <div id="hud">
-        <div class="score-val" id="score">0</div>
-        <div id="status">Drag Down to Shoot</div>
+        <div class="score-box">
+            <div class="score-val" id="score">0</div>
+            <div class="streak-val" id="streak">STREAK x1</div>
+        </div>
+        <div id="status">Drag Down to Lob</div>
     </div>
 
 <script>
 // --- CONFIGURATION ---
 const C = {
-    gravity: 0.4,        // Lower gravity for longer flight
-    zSpeed: 60,          // Faster depth speed
+    gravity: 0.45,       // Gravity
+    zSpeed: 55,          // Forward speed
+    lobPower: -12,       // AUTOMATIC UPWARD FORCE (The "Lob")
     targetDist: 800,     // Distance to hit
-    hitWindow: 200,      // Forgiveness window
+    hitWindow: 200,      // Hit forgiveness
     focalLength: 850,
-    anchorYRatio: 0.5    // Anchors are at 50% screen height
+    anchorYRatio: 0.6    // Lower anchors slightly for better view
 };
 
 // --- STATE ---
@@ -58,7 +66,9 @@ let dragPos = { x: 0, y: 0 };
 let flyingEgg = null; 
 let targets = [];
 let particles = [];
+let popups = []; // Floating text
 let score = 0;
+let streak = 0;
 let shake = 0;
 
 // --- INIT ---
@@ -66,43 +76,27 @@ window.onload = async () => {
     canvas = document.getElementById('game-layer');
     ctx = canvas.getContext('2d');
     video = document.getElementById('camera-feed');
-    
     resize();
     window.addEventListener('resize', resize);
 
-    // --- INPUT HANDLERS ---
+    // Input Handling
     const startDrag = (x, y) => {
         if (flyingEgg) return;
-        if (y > window.innerHeight * 0.4) {
-            dragging = true;
-            dragPos = { x, y };
-        }
+        if (y > window.innerHeight * 0.4) { dragging = true; dragPos = { x, y }; }
     };
-    
-    const moveDrag = (x, y) => {
-        if (dragging) dragPos = { x, y };
-    };
-    
-    const endDrag = () => {
-        if (dragging) { dragging = false; fire(); }
-    };
+    const moveDrag = (x, y) => { if (dragging) dragPos = { x, y }; };
+    const endDrag = () => { if (dragging) { dragging = false; fire(); } };
 
-    // Touch
     canvas.addEventListener('touchstart', e => { e.preventDefault(); startDrag(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
     canvas.addEventListener('touchmove', e => { e.preventDefault(); moveDrag(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
     canvas.addEventListener('touchend', e => { e.preventDefault(); endDrag(); }, {passive:false});
     
-    // Mouse
-    canvas.addEventListener('mousedown', e => startDrag(e.clientX, e.clientY));
-    window.addEventListener('mousemove', e => moveDrag(e.clientX, e.clientY));
-    window.addEventListener('mouseup', endDrag);
-
-    // --- AI START ---
+    // AI
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         video.srcObject = stream;
         video.onloadedmetadata = () => { initAI(); };
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     loop();
 };
@@ -115,25 +109,23 @@ function fire() {
     const cx = window.innerWidth / 2;
     const anchorY = window.innerHeight * C.anchorYRatio; 
     
-    // Vector from Pull Point -> Anchor
     let dx = cx - dragPos.x;
     let dy = anchorY - dragPos.y; 
     
-    // Cap the upward angle so it doesn't fly off screen
-    // If dy is too negative (meaning we pulled WAY down), we flatten the trajectory
-    if (dy < -200) dy = -50; 
+    // THE LOB CALCULATION
+    // We take the user's vertical pull (dy) and divide it to reduce influence
+    // Then we add a constant negative Y velocity (C.lobPower) to force it up
+    let launchVy = (dy * 0.1) + C.lobPower; 
 
-    // Launch!
     flyingEgg = {
         x: cx,          
-        y: anchorY + 100, // Start launch slightly below anchor
+        y: anchorY + 80, 
         z: 0,           
-        vx: dx * 0.15,    // Horizontal drift
-        vy: dy * 0.12,    // Vertical Arc (Reduced multiplier to keep it on screen)
-        vz: C.zSpeed      // Fast forward
+        vx: dx * 0.15,    
+        vy: launchVy,     // Use the Lob
+        vz: C.zSpeed      
     };
-    
-    shake = 10; 
+    shake = 8; 
 }
 
 function update() {
@@ -143,17 +135,32 @@ function update() {
         p.x += p.vx; p.y += p.vy; p.vy += 0.5; p.life -= 0.03;
         if(p.life <= 0) particles.splice(i,1);
     }
+    
+    // Popups (Floating Text)
+    for(let i=popups.length-1; i>=0; i--) {
+        let p = popups[i];
+        p.y -= 2; // Float up
+        p.life -= 0.02;
+        if(p.life <= 0) popups.splice(i,1);
+    }
 
     if (!flyingEgg) return;
 
-    // 3D Physics
+    // Physics
     flyingEgg.x += flyingEgg.vx;
     flyingEgg.y += flyingEgg.vy;
     flyingEgg.z += flyingEgg.vz;
-    flyingEgg.vy += C.gravity; 
+    flyingEgg.vy += C.gravity; // Gravity pulls the lob down
 
     // Kill if too far
-    if (flyingEgg.z > 2500) { flyingEgg = null; return; }
+    if (flyingEgg.z > 2500 || flyingEgg.y > 2000) { 
+        if(flyingEgg) {
+            streak = 0; // Miss reset streak
+            updateUI();
+        }
+        flyingEgg = null; 
+        return; 
+    }
 
     // Collision Check
     if (Math.abs(flyingEgg.z - C.targetDist) < C.hitWindow) {
@@ -177,17 +184,39 @@ function checkHit() {
         let th = t.bbox[3] * sy;
 
         if (screenX > tx && screenX < tx + tw && screenY > ty && screenY < ty + th) {
+            
+            // HEADSHOT CHECK (Top 20% of box)
+            let isHeadshot = (screenY < ty + (th * 0.2));
+            handleHit(screenX, screenY, scale, isHeadshot);
             hit = true;
             break;
         }
     }
+}
+
+function handleHit(x, y, scale, isHeadshot) {
+    streak++;
+    let points = 100 * streak;
+    if (isHeadshot) points *= 2;
     
-    if (hit) {
-        score++;
-        document.getElementById('score').innerText = score;
-        createExplosion(screenX, screenY, scale); 
-        shake = 20;
-        flyingEgg = null; 
+    score += points;
+    updateUI();
+    
+    // Effects
+    createExplosion(x, y, scale); 
+    createPopup(x, y, `+${points}`, isHeadshot);
+    shake = 20;
+    flyingEgg = null; 
+}
+
+function updateUI() {
+    document.getElementById('score').innerText = score;
+    const sDiv = document.getElementById('streak');
+    if(streak > 1) {
+        sDiv.style.display = 'block';
+        sDiv.innerText = `STREAK x${streak}`;
+    } else {
+        sDiv.style.display = 'none';
     }
 }
 
@@ -199,7 +228,6 @@ function loop() {
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Shake
     if (shake > 0) {
         let sx = (Math.random() - 0.5) * shake;
         let sy = (Math.random() - 0.5) * shake;
@@ -208,66 +236,84 @@ function loop() {
         shake *= 0.9;
     }
 
-    // 1. Draw Particles
+    // 1. Particles
     for (let p of particles) {
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
         ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fill();
     }
     ctx.globalAlpha = 1.0;
 
-    // 2. Determine "Apex" Point (Where pouch is)
+    // 2. Slingshot
     let apexX, apexY;
-    
     if (dragging && !flyingEgg) {
-        // Pouch follows finger
         apexX = dragPos.x;
         apexY = dragPos.y;
     } else {
-        // Idle State (Hanging in middle)
         apexX = canvas.width / 2;
-        apexY = (canvas.height * C.anchorYRatio) + 200; // Hangs 200px below anchor
+        apexY = (canvas.height * C.anchorYRatio) + 150; 
     }
 
-    // 3. Draw Bands (Connecting Anchors -> Apex)
-    if (!flyingEgg || (flyingEgg && flyingEgg.z > 50)) { // Hide bands right after shot
+    if (!flyingEgg || (flyingEgg && flyingEgg.z > 50)) {
          drawConnectedBands(apexX, apexY);
     }
 
-    // 4. Draw Pouch & Egg at Apex
     if (!flyingEgg) {
         drawPouch(apexX, apexY);
         drawEgg(apexX, apexY, 1.0);
     } else {
-        // Draw Flying Egg
         const scale = C.focalLength / (C.focalLength + flyingEgg.z);
         const cx = window.innerWidth / 2;
         const cy = window.innerHeight / 2;
         const sx = (flyingEgg.x - cx) * scale + cx;
         const sy = (flyingEgg.y - cy) * scale + cy;
-
         drawEgg(sx, sy, scale);
     }
+
+    // 3. Popups (On Top)
+    ctx.textAlign = "center";
+    for(let p of popups) {
+        ctx.fillStyle = p.color;
+        ctx.font = `bold ${p.size}px Arial`;
+        ctx.globalAlpha = p.life;
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 3;
+        ctx.strokeText(p.text, p.x, p.y);
+        ctx.fillText(p.text, p.x, p.y);
+    }
+    ctx.globalAlpha = 1.0;
 
     if (shake > 0) ctx.restore();
 }
 
 // --- DRAWING HELPERS ---
 
+function createPopup(x, y, text, isHeadshot) {
+    popups.push({
+        x: x, y: y - 50,
+        text: isHeadshot ? "HEADSHOT!" : text,
+        life: 1.0,
+        color: isHeadshot ? "#ff0000" : "#ffeb3b",
+        size: isHeadshot ? 40 : 30
+    });
+    // If headshot, add the points separately below
+    if(isHeadshot) {
+        popups.push({ x: x, y: y, text: text, life: 1.0, color: "#ffeb3b", size: 30 });
+    }
+}
+
 function drawConnectedBands(tipX, tipY) {
     const w = canvas.width;
-    const ay = canvas.height * C.anchorYRatio; // Anchor Y
+    const ay = canvas.height * C.anchorYRatio; 
     
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     
-    // Left Band
     ctx.beginPath();
     ctx.moveTo(0, ay); 
-    ctx.quadraticCurveTo(w * 0.2, tipY, tipX, tipY); // Curve towards pouch
+    ctx.quadraticCurveTo(w * 0.2, tipY, tipX, tipY);
     ctx.lineWidth = 14; ctx.strokeStyle = "#3e2723"; ctx.stroke();
     ctx.lineWidth = 6; ctx.strokeStyle = "#a1887f"; ctx.stroke();
 
-    // Right Band
     ctx.beginPath();
     ctx.moveTo(w, ay); 
     ctx.quadraticCurveTo(w * 0.8, tipY, tipX, tipY);
@@ -278,8 +324,6 @@ function drawConnectedBands(tipX, tipY) {
 function drawPouch(x, y) {
     ctx.save();
     ctx.translate(x, y);
-    
-    // Rotate based on X position to look realistic
     const rot = (x - window.innerWidth/2) * 0.001;
     ctx.rotate(rot);
     
@@ -301,11 +345,9 @@ function drawEgg(x, y, scale) {
 
     ctx.beginPath();
     ctx.ellipse(x, y, r * 0.85, r, 0, 0, Math.PI * 2);
-    
     let grad = ctx.createRadialGradient(x - r/3, y - r/3, r/4, x, y, r);
     grad.addColorStop(0, "#fff");
     grad.addColorStop(1, "#ddd");
-    
     ctx.fillStyle = grad;
     ctx.fill();
 }
