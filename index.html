@@ -2,380 +2,423 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <title>Eggshot</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #111; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; touch-action: none; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Arial Black', sans-serif; touch-action: none; }
         
-        /* Video Background */
-        #camera-video {
+        #camera-feed {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover; z-index: 1; filter: brightness(0.9); /* Slightly darken video to make game pop */
+            object-fit: cover; z-index: 1; filter: contrast(1.1) brightness(0.9);
         }
 
-        /* Game Layer */
-        #game-canvas {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 2;
+        #game-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;
         }
 
-        /* UI */
-        #ui {
-            position: absolute; top: 20px; left: 20px; z-index: 3;
-            color: white; font-size: 20px; font-weight: 900;
-            text-shadow: 2px 2px 0px #000; pointer-events: none;
+        /* HUD */
+        #hud {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;
         }
-        .score-big { font-size: 40px; color: #ffeb3b; }
+        
+        .score-container {
+            position: absolute; top: 30px; left: 20px;
+            text-shadow: 0px 4px 10px rgba(0,0,0,0.8);
+        }
+        
+        .score-label { color: #f1c40f; font-size: 14px; letter-spacing: 2px; }
+        .score-val { color: #fff; font-size: 48px; line-height: 1; }
 
-        #loading {
+        #crosshair {
+            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+            width: 40px; height: 40px; border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 50%;
+            pointer-events: none; opacity: 0.5;
+        }
+        #crosshair::after {
+            content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 4px; height: 4px; background: red; border-radius: 50%;
+        }
+
+        #status-msg {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            z-index: 4; color: white; background: rgba(0,0,0,0.8);
-            padding: 20px; border-radius: 10px; text-align: center;
+            color: white; background: rgba(0,0,0,0.7); padding: 15px 30px; border-radius: 30px;
+            font-size: 16px; text-transform: uppercase; letter-spacing: 1px;
+            transition: opacity 0.5s;
         }
     </style>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
 </head>
 <body>
 
-    <video id="camera-video" autoplay playsinline muted></video>
-    <canvas id="game-canvas"></canvas>
+    <video id="camera-feed" autoplay playsinline muted></video>
+    <canvas id="game-layer"></canvas>
     
-    <div id="ui">
-        SCORE<br>
-        <span id="score-val" class="score-big">0</span>
+    <div id="hud">
+        <div class="score-container">
+            <div class="score-label">CONFIRMED HITS</div>
+            <div class="score-val" id="score">0</div>
+        </div>
+        <div id="crosshair"></div>
+        <div id="status-msg">Calibrating Weapon System...</div>
     </div>
 
-    <div id="loading">Initializing Camera & AI...</div>
-
 <script>
-    // --- CONFIG ---
-    const SETTINGS = {
-        aiInterval: 150,    // AI checks every 150ms
-        gravity: 1.2,       // Slightly higher gravity for realism
-        bandStiffness: 0.1, // Elasticity (Lower is looser, but we use high velocity fix)
-        shotPower: 18,      // Force multiplier on release
-        maxStretch: 150     // How far you can pull back
-    };
+/**
+ * SLINGSHOT PRO ENGINE
+ */
+const CONFIG = {
+    gravity: 1.5,           // Heavy gravity for satisfying arc
+    dragStiffness: 0.05,    // How tight the band feels
+    launchForce: 0.25,      // EXPLOSIVE power multiplier
+    maxStretch: 200,        // Max pixels you can pull back
+    shakeIntensity: 15      // Screen shake on hit
+};
 
-    // --- STATE ---
-    let engine, world, render;
-    let egg, anchor, elastic;
-    let mouseConstraint;
-    let score = 0;
-    let targets = []; // AI detections
-    let splats = [];  // Array to hold splat visual objects
-    let isDragging = false;
-    let canvas, ctx, video;
+// --- GLOBALS ---
+let engine, world;
+let canvas, ctx, video;
+let eggBody;
+let isDragging = false;
+let dragStart = { x: 0, y: 0 };
+let currentDrag = { x: 0, y: 0 };
+let targets = []; // AI Targets
+let particles = []; // Splat particles
+let score = 0;
+let shake = 0; // Current screen shake amount
+
+// --- INITIALIZATION ---
+window.onload = async () => {
+    canvas = document.getElementById('game-layer');
+    ctx = canvas.getContext('2d');
+    video = document.getElementById('camera-feed');
     
-    // --- ASSETS (Procedural Drawing Helpers) ---
-    const Draw = {
-        egg: (x, y, radius, ctx) => {
-            ctx.beginPath();
-            ctx.ellipse(x, y, radius * 0.8, radius, 0, 0, Math.PI * 2);
-            // Gradient for 3D look
-            let grad = ctx.createRadialGradient(x - 5, y - 5, 2, x, y, radius);
-            grad.addColorStop(0, "#fff");
-            grad.addColorStop(1, "#e0e0e0");
-            ctx.fillStyle = grad;
-            ctx.fill();
-            ctx.lineWidth = 1;
-            ctx.strokeStyle = "#ccc";
-            ctx.stroke();
-        },
-        woodTexture: (ctx) => {
-            // Simple brown color for handle
-            ctx.fillStyle = "#8B4513";
-            ctx.strokeStyle = "#5D2906";
-        },
-        splat: (s, ctx) => {
-            ctx.globalAlpha = s.opacity;
-            ctx.fillStyle = "#FFD700"; // Yolk yellow
-            ctx.beginPath();
-            // Draw a messy blob
-            ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
-            ctx.arc(s.x + s.size*0.5, s.y - s.size*0.4, s.size*0.6, 0, Math.PI * 2);
-            ctx.arc(s.x - s.size*0.4, s.y + s.size*0.3, s.size*0.7, 0, Math.PI * 2);
-            ctx.fill();
-            
-            // Inner white shine
-            ctx.fillStyle = "rgba(255,255,255,0.6)";
-            ctx.beginPath();
-            ctx.arc(s.x - 5, s.y - 5, s.size * 0.2, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.globalAlpha = 1.0;
+    resize();
+    window.addEventListener('resize', resize);
+
+    // 1. Setup Physics
+    setupPhysics();
+
+    // 2. Setup Camera
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+             // Start AI once video is ready
+             initAI(); 
+        };
+    } catch(e) { console.error(e); }
+
+    // 3. Start Render Loop
+    requestAnimationFrame(renderLoop);
+};
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+
+// --- PHYSICS ENGINE ---
+function setupPhysics() {
+    const { Engine, World, Bodies, Mouse, MouseConstraint } = Matter;
+    engine = Engine.create();
+    world = engine.world;
+    engine.gravity.y = CONFIG.gravity;
+
+    // We don't add the egg yet. The egg is "virtual" until fired.
+    
+    // Add interactions
+    const mouse = Mouse.create(canvas);
+    const mc = MouseConstraint.create(engine, {
+        mouse: mouse,
+        constraint: { stiffness: 0.1, render: { visible: false } }
+    });
+    
+    // Custom Input Handling for the "Slingshot Feel"
+    Matter.Events.on(mc, 'mousedown', (e) => {
+        // Only allow grab if we aren't already firing an egg
+        if (!eggBody && e.mouse.position.y > window.innerHeight * 0.6) {
+            isDragging = true;
+            dragStart = { x: window.innerWidth/2, y: window.innerHeight - 100 };
+            currentDrag = { x: e.mouse.position.x, y: e.mouse.position.y };
         }
-    };
+    });
 
-    // --- INIT ---
-    window.onload = async () => {
-        video = document.getElementById('camera-video');
-        canvas = document.getElementById('game-canvas');
-        ctx = canvas.getContext('2d');
+    Matter.Events.on(mc, 'mousemove', (e) => {
+        if (isDragging) {
+            currentDrag = e.mouse.position;
+        }
+    });
 
-        resize();
-        window.addEventListener('resize', resize);
-
-        // 1. Camera
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: 'environment' } 
-            });
-            video.srcObject = stream;
-            await new Promise(r => video.onloadedmetadata = r);
-        } catch (e) { alert("Camera failed: " + e); }
-
-        // 2. Physics
-        initPhysics();
-
-        // 3. AI
-        initAI();
-
-        // 4. Start Game Loop
-        requestAnimationFrame(loop);
-    };
-
-    function resize() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    }
-
-    // --- PHYSICS SETUP ---
-    function initPhysics() {
-        const { Engine, World, Bodies, Constraint, Mouse, MouseConstraint, Vector, Body } = Matter;
-        engine = Engine.create();
-        world = engine.world;
-        engine.gravity.y = SETTINGS.gravity;
-
-        // Anchor Point (Bottom Center)
-        const aX = window.innerWidth / 2;
-        const aY = window.innerHeight - 100;
-
-        anchor = Bodies.circle(aX, aY, 5, { isStatic: true, render: { visible: false } });
-        
-        // The Egg
-        egg = Bodies.circle(aX, aY - 20, 20, { 
-            restitution: 0.6, 
-            density: 0.005, // Heavy enough to fly true
-            frictionAir: 0.01 // Low drag
-        });
-
-        // The Elastic
-        elastic = Constraint.create({
-            pointA: { x: aX, y: aY },
-            bodyB: egg,
-            stiffness: SETTINGS.bandStiffness,
-            damping: 0.05,
-            length: 1
-        });
-
-        World.add(world, [anchor, egg, elastic]);
-
-        // Interaction
-        const mouse = Mouse.create(canvas);
-        mouseConstraint = MouseConstraint.create(engine, {
-            mouse: mouse,
-            constraint: { stiffness: 0.2, render: { visible: false } }
-        });
-        
-        // Hook into drag events
-        Matter.Events.on(mouseConstraint, 'startdrag', () => { isDragging = true; });
-        Matter.Events.on(mouseConstraint, 'enddrag', () => { 
-            isDragging = false; 
+    Matter.Events.on(mc, 'mouseup', (e) => {
+        if (isDragging) {
+            isDragging = false;
             fireEgg();
-        });
-
-        World.add(world, mouseConstraint);
-    }
-
-    function fireEgg() {
-        // Boost velocity manually for that "Snap" feel
-        // Calculate vector from anchor to egg
-        const forceVector = Matter.Vector.sub(anchor.position, egg.position);
-        
-        // If pulled back enough
-        if (Matter.Vector.magnitude(forceVector) > 20) {
-            // Detach elastic
-            elastic.bodyB = null;
-            
-            // Apply HUGE force in the direction of the aim
-            // We want it to go opposite to the drag (towards top of screen)
-            const dir = Matter.Vector.normalise(forceVector);
-            const force = SETTINGS.shotPower * egg.mass; 
-            
-            Matter.Body.applyForce(egg, egg.position, { 
-                x: dir.x * force * 0.002, 
-                y: dir.y * force * 0.002 
-            });
         }
-    }
+    });
 
-    // --- AI SETUP ---
-    async function initAI() {
-        const model = await cocoSsd.load();
-        document.getElementById('loading').style.display = 'none';
+    World.add(world, mc);
+}
 
-        setInterval(async () => {
-            if (video.readyState === 4) {
-                const predictions = await model.detect(video);
-                // Just store the data, don't draw boxes
-                targets = predictions.filter(p => p.class === 'person');
-            }
-        }, SETTINGS.aiInterval);
-    }
+function fireEgg() {
+    // 1. Calculate Vector
+    const center = { x: window.innerWidth / 2, y: window.innerHeight - 50 };
+    // The force is opposite to the drag
+    let dx = center.x - currentDrag.x;
+    let dy = center.y - currentDrag.y;
+    
+    // Normalize and clamp
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < 20) return; // Too weak, don't fire
 
-    // --- MAIN RENDER LOOP ---
-    function loop() {
-        requestAnimationFrame(loop);
-        
-        // Physics Step
-        Matter.Engine.update(engine, 1000 / 60);
-        
-        // Clear Screen
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // 2. Create Physical Egg
+    const { Bodies, World, Body } = Matter;
+    
+    // Remove old egg if exists (though we only allow one at a time for now)
+    if (eggBody) World.remove(world, eggBody);
 
-        // 1. Draw Splats (Behind everything)
-        updateAndDrawSplats();
+    eggBody = Bodies.circle(currentDrag.x, currentDrag.y, 15, {
+        restitution: 0.5,
+        density: 0.05, // Heavy
+        frictionAir: 0.005, // Cut through air
+        label: "Egg"
+    });
 
-        // 2. Draw Slingshot Bands (Back part)
-        drawBands('back');
+    World.add(world, eggBody);
 
-        // 3. Draw Egg
-        // If egg is off screen, reset
-        if (egg.position.y > canvas.height + 100 || egg.position.y < -500 || egg.position.x < -100 || egg.position.x > canvas.width + 100) {
-            resetEgg();
-        }
-        Draw.egg(egg.position.x, egg.position.y, 20, ctx);
+    // 3. Apply EXPLOSIVE Force
+    // We multiply by dist to make pulling further = harder shot
+    const force = Math.min(dist, CONFIG.maxStretch) * CONFIG.launchForce;
+    const angle = Math.atan2(dy, dx);
+    
+    Body.setVelocity(eggBody, {
+        x: Math.cos(angle) * force,
+        y: Math.sin(angle) * force
+    });
 
-        // 4. Draw Slingshot Handle & Front Bands
-        drawSlingshotHandle();
-        drawBands('front');
+    // 4. Camera Shake
+    shake = 5;
+}
 
-        // 5. Logic
-        checkCollisions();
-    }
+// --- AI BRAIN ---
+async function initAI() {
+    const model = await cocoSsd.load();
+    document.getElementById('status-msg').style.opacity = 0; // Hide loader
+    
+    setInterval(async () => {
+        if(!video || video.readyState !== 4) return;
+        const preds = await model.detect(video);
+        targets = preds.filter(p => p.class === 'person');
+    }, 150);
+}
 
-    // --- DRAWING HELPERS ---
-    function drawSlingshotHandle() {
-        const cx = window.innerWidth / 2;
-        const cy = window.innerHeight; // Bottom of screen
-        
+// --- RENDER LOOP (The Visuals) ---
+function renderLoop() {
+    requestAnimationFrame(renderLoop);
+    Matter.Engine.update(engine, 1000/60);
+    
+    // Clear Canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Apply Shake
+    let shakeX = 0, shakeY = 0;
+    if (shake > 0) {
+        shakeX = (Math.random() - 0.5) * shake;
+        shakeY = (Math.random() - 0.5) * shake;
+        shake *= 0.9; // Damping
         ctx.save();
-        Draw.woodTexture(ctx);
-        ctx.lineWidth = 15;
-        ctx.lineCap = "round";
-        
-        // The "Y" shape
-        ctx.beginPath();
-        ctx.moveTo(cx, cy); // Base
-        ctx.lineTo(cx, cy - 80); // Trunk
-        ctx.stroke();
-        
-        // Left arm
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - 80);
-        ctx.lineTo(cx - 40, cy - 140);
-        ctx.stroke();
-
-        // Right arm
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - 80);
-        ctx.lineTo(cx + 40, cy - 140);
-        ctx.stroke();
-        ctx.restore();
+        ctx.translate(shakeX, shakeY);
     }
 
-    function drawBands(layer) {
-        // Don't draw bands if fired
-        if (!elastic.bodyB) return;
+    // 1. Draw Splats (Bottom Layer)
+    drawParticles();
 
-        const cx = window.innerWidth / 2;
-        const cy = window.innerHeight;
-        const leftTip = { x: cx - 40, y: cy - 140 };
-        const rightTip = { x: cx + 40, y: cy - 140 };
-
-        ctx.lineWidth = 6;
-        ctx.strokeStyle = "#333"; // Dark rubber
-        ctx.beginPath();
-
-        if (layer === 'back') {
-            // Draw connect to left tip
-            ctx.moveTo(leftTip.x, leftTip.y);
-            ctx.lineTo(egg.position.x, egg.position.y);
+    // 2. Draw The "Ghost" Egg (When Dragging)
+    if (isDragging) {
+        drawElastic(currentDrag.x, currentDrag.y);
+        drawEgg(currentDrag.x, currentDrag.y, 20); // Bigger when close
+        drawPouch(currentDrag.x, currentDrag.y);
+    } 
+    // 3. Draw The Real Flying Egg
+    else if (eggBody) {
+        // Check bounds
+        if (eggBody.position.y > canvas.height + 200 || eggBody.position.x < -100 || eggBody.position.x > canvas.width + 100) {
+            Matter.World.remove(world, eggBody);
+            eggBody = null;
         } else {
-            // Draw connect to right tip
-            ctx.moveTo(rightTip.x, rightTip.y);
-            ctx.lineTo(egg.position.x, egg.position.y);
-        }
-        ctx.stroke();
-    }
-
-    function updateAndDrawSplats() {
-        for (let i = splats.length - 1; i >= 0; i--) {
-            let s = splats[i];
-            Draw.splat(s, ctx);
-            s.opacity -= 0.01; // Fade out
-            s.size += 0.2;     // Expand slightly (drip)
+            drawEgg(eggBody.position.x, eggBody.position.y, 15);
             
-            if (s.opacity <= 0) splats.splice(i, 1);
+            // Draw faint trail
+            ctx.beginPath();
+            ctx.moveTo(eggBody.position.x, eggBody.position.y);
+            ctx.lineTo(eggBody.position.x - eggBody.velocity.x * 3, eggBody.position.y - eggBody.velocity.y * 3);
+            ctx.strokeStyle = "rgba(255,255,255,0.3)";
+            ctx.lineWidth = 10;
+            ctx.stroke();
+
+            // Collision Check
+            checkHit();
         }
+    } else {
+        // Idle State: Draw elastics hanging loose
+        drawIdleElastics();
     }
 
-    // --- LOGIC ---
-    function checkCollisions() {
-        // Only check if egg is flying freely (not being dragged)
-        if (elastic.bodyB) return; 
+    if (shake > 0) ctx.restore();
+}
 
-        // Scale factors
-        const sx = canvas.width / video.videoWidth;
-        const sy = canvas.height / video.videoHeight;
+// --- DRAWING FUNCTIONS (The "Legit" Look) ---
 
-        for (let t of targets) {
-            // Bounding box mapping
-            let tx = t.bbox[0] * sx;
-            let ty = t.bbox[1] * sy;
-            let tw = t.bbox[2] * sx;
-            let th = t.bbox[3] * sy;
+function drawIdleElastics() {
+    const w = canvas.width;
+    const h = canvas.height;
+    
+    ctx.beginPath();
+    // Left Band
+    ctx.moveTo(0, h); 
+    ctx.bezierCurveTo(w*0.2, h-100, w*0.4, h-50, w*0.5, h-40);
+    // Right Band
+    ctx.moveTo(w, h);
+    ctx.bezierCurveTo(w*0.8, h-100, w*0.6, h-50, w*0.5, h-40);
+    
+    ctx.lineWidth = 12;
+    ctx.strokeStyle = "#3e2723"; // Dark leather
+    ctx.stroke();
+    
+    // Idle Pouch
+    ctx.fillStyle = "#5d4037";
+    ctx.beginPath();
+    ctx.arc(w*0.5, h-40, 15, 0, Math.PI*2);
+    ctx.fill();
+}
 
-            // Simple point collision (is egg center inside box?)
-            if (egg.position.x > tx && egg.position.x < tx + tw &&
-                egg.position.y > ty && egg.position.y < ty + th) {
-                
-                createSplat(egg.position.x, egg.position.y);
-                score += 10;
-                document.getElementById('score-val').innerText = score;
-                
-                // Reset egg immediately
-                resetEgg();
-                break;
-            }
-        }
-    }
+function drawElastic(eggX, eggY) {
+    const w = canvas.width;
+    const h = canvas.height;
 
-    function createSplat(x, y) {
-        splats.push({
-            x: x,
-            y: y,
-            size: 30 + Math.random() * 20,
-            opacity: 1.0
+    ctx.lineCap = "round";
+    
+    // Draw two bands from corners to the egg
+    // Inner lighter rubber
+    ctx.strokeStyle = "#d7ccc8"; 
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(0, h); ctx.lineTo(eggX, eggY);
+    ctx.moveTo(w, h); ctx.lineTo(eggX, eggY);
+    ctx.stroke();
+
+    // Outer dark rubber
+    ctx.strokeStyle = "#3e2723"; 
+    ctx.lineWidth = 14;
+    ctx.beginPath();
+    ctx.moveTo(0, h); ctx.lineTo(eggX, eggY);
+    ctx.moveTo(w, h); ctx.lineTo(eggX, eggY);
+    ctx.stroke();
+}
+
+function drawPouch(x, y) {
+    // Leather patch holding the egg
+    ctx.fillStyle = "#5d4037";
+    ctx.beginPath();
+    ctx.ellipse(x, y + 5, 25, 18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#3e2723";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+}
+
+function drawEgg(x, y, radius) {
+    ctx.beginPath();
+    // Rotate slightly based on velocity if moving
+    ctx.ellipse(x, y, radius * 0.85, radius, eggBody ? eggBody.angle : 0, 0, Math.PI * 2);
+    
+    // 3D Shading
+    let grad = ctx.createRadialGradient(x - radius/3, y - radius/3, radius/4, x, y, radius);
+    grad.addColorStop(0, "#ffffff");
+    grad.addColorStop(1, "#e6e6e6");
+    
+    ctx.fillStyle = grad;
+    ctx.fill();
+    
+    // Outline
+    ctx.strokeStyle = "rgba(0,0,0,0.1)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+}
+
+// --- PARTICLE SYSTEM (The "Trash" Fix) ---
+function createExplosion(x, y) {
+    shake = CONFIG.shakeIntensity; // Screen Shake!
+    score++;
+    document.getElementById('score').innerText = score;
+
+    // Create 30 yolk particles
+    for(let i=0; i<30; i++) {
+        particles.push({
+            x: x, y: y,
+            vx: (Math.random() - 0.5) * 15,
+            vy: (Math.random() - 0.5) * 15,
+            radius: Math.random() * 8 + 2,
+            color: Math.random() > 0.3 ? '#ffeb3b' : '#fff', // Yolk vs White
+            life: 1.0
         });
     }
+}
 
-    function resetEgg() {
-        Matter.World.remove(world, egg);
+function drawParticles() {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        let p = particles[i];
         
-        const aX = window.innerWidth / 2;
-        const aY = window.innerHeight - 100;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
 
-        egg = Matter.Bodies.circle(aX, aY - 20, 20, { 
-            restitution: 0.6, density: 0.005, frictionAir: 0.01 
-        });
+        // Physics
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.5; // Gravity
+        p.life -= 0.02; // Fade
 
-        // Reattach
-        elastic.bodyB = egg;
-        Matter.World.add(world, egg);
+        // Stick to "screen" (stop moving if life is low to simulate dripping)
+        if (p.life < 0.6) {
+            p.vx *= 0.8;
+            p.vy *= 0.8;
+        }
+
+        if (p.life <= 0) particles.splice(i, 1);
     }
+}
+
+// --- HIT LOGIC ---
+function checkHit() {
+    if (!eggBody) return;
+    
+    const sx = canvas.width / video.videoWidth;
+    const sy = canvas.height / video.videoHeight;
+
+    for (let t of targets) {
+        let x = t.bbox[0] * sx;
+        let y = t.bbox[1] * sy;
+        let w = t.bbox[2] * sx;
+        let h = t.bbox[3] * sy;
+
+        // Check if egg is inside box
+        if (eggBody.position.x > x && eggBody.position.x < x + w &&
+            eggBody.position.y > y && eggBody.position.y < y + h) {
+            
+            // HIT!
+            createExplosion(eggBody.position.x, eggBody.position.y);
+            Matter.World.remove(world, eggBody);
+            eggBody = null;
+            break;
+        }
+    }
+}
 
 </script>
 </body>
