@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Slingshot AR: BOSS BATTLE</title>
+    <title>EGGSHOT</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Arial Black', sans-serif; touch-action: none; }
         
@@ -17,10 +17,13 @@
         #hud {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;
         }
-        .score-val { 
-            position: absolute; top: 30px; left: 20px;
-            color: #ffeb3b; font-size: 40px; text-shadow: 2px 2px 0 #000;
+        .score-box {
+            position: absolute; top: 20px; left: 20px;
+            color: #fff; text-shadow: 2px 2px 0 #000;
         }
+        .score-val { font-size: 48px; color: #ffeb3b; line-height: 1; }
+        .streak-val { font-size: 20px; color: #ff5722; display: none; margin-top: 5px; }
+        
         #status {
             position: absolute; bottom: 80px; width: 100%; text-align: center;
             color: white; font-size: 16px; text-transform: uppercase; letter-spacing: 2px;
@@ -37,8 +40,11 @@
     <canvas id="game-layer"></canvas>
     
     <div id="hud">
-        <div class="score-val" id="score">0</div>
-        <div id="status">Target Acquired</div>
+        <div class="score-box">
+            <div class="score-val" id="score">0</div>
+            <div class="streak-val" id="streak">STREAK x1</div>
+        </div>
+        <div id="status">Drag Down to Shoot</div>
     </div>
 
 <script>
@@ -58,11 +64,11 @@ let canvas, ctx, video;
 let dragging = false;
 let dragPos = { x: 0, y: 0 };
 let flyingEgg = null; 
-// We now store detailed objects: { bbox: [x,y,w,h], hp: 100, maxHp: 100, lastSeen: timestamp }
-let activeTargets = []; 
+let activeTargets = []; // { bbox, hp, lastSeen, respawnTimer }
 let particles = [];
 let popups = []; 
 let score = 0;
+let streak = 0;
 let shake = 0;
 
 // --- INIT ---
@@ -142,7 +148,14 @@ function update() {
     flyingEgg.z += flyingEgg.vz;
     flyingEgg.vy += C.gravity; 
 
-    if (flyingEgg.z > 2500 || flyingEgg.y > 2000) { flyingEgg = null; return; }
+    if (flyingEgg.z > 2500 || flyingEgg.y > 2000) { 
+        if(flyingEgg) {
+            streak = 0; 
+            updateUI();
+        }
+        flyingEgg = null; 
+        return; 
+    }
 
     if (Math.abs(flyingEgg.z - C.targetDist) < C.hitWindow) {
         checkHit();
@@ -158,50 +171,65 @@ function checkHit() {
     const sy = canvas.height / video.videoHeight;
 
     let hit = false;
-    // Iterate backwards so we can modify if needed
     for (let i = activeTargets.length - 1; i >= 0; i--) {
         let t = activeTargets[i];
+        
         let tx = t.bbox[0] * sx;
         let ty = t.bbox[1] * sy;
         let tw = t.bbox[2] * sx;
         let th = t.bbox[3] * sy;
 
-        // Bounding Box Check
         if (screenX > tx && screenX < tx + tw && screenY > ty && screenY < ty + th) {
             
-            // It's a hit!
+            // HIT CONFIRMED
             let damage = 10;
-            let isHeadshot = (screenY < ty + (th * 0.25)); // Top 25% is head
-            
-            if (isHeadshot) {
-                damage = 25;
-            }
+            let isHeadshot = (screenY < ty + (th * 0.25)); 
+            if (isHeadshot) damage = 25;
 
-            // Apply Damage
-            t.hp -= damage;
-            if (t.hp < 0) t.hp = 0;
-
-            // Update Global Score
-            score += damage;
-            document.getElementById('score').innerText = score;
-
-            // Visuals
             createExplosion(screenX, screenY, scale); 
-            createPopup(screenX, screenY, `-${damage}`, isHeadshot);
             shake = 15;
-            
-            // If killed
-            if (t.hp === 0) {
-                 createPopup(screenX, screenY - 50, "KO!", true);
-                 // Optional: Respawn logic or leave them dead
-                 // For fun, let's reset them after 3 seconds
-                 setTimeout(() => { t.hp = 100; }, 3000);
+            hit = true;
+
+            // Logic: Is target alive or dead?
+            if (t.hp > 0) {
+                // ALIVE: Take Damage
+                t.hp -= damage;
+                score += damage;
+                createPopup(screenX, screenY, `-${damage}`, isHeadshot);
+
+                // Check KO
+                if (t.hp <= 0) {
+                    t.hp = 0;
+                    createPopup(screenX, screenY - 50, "KO!", true);
+                    // Respawn after 4 seconds
+                    setTimeout(() => { t.hp = 100; }, 4000);
+                } else {
+                    streak++;
+                }
+
+            } else {
+                // DEAD: Overkill Bonus
+                // Allow shooting the corpse for fun, but fewer points
+                score += 5;
+                createPopup(screenX, screenY, "R.I.P", false);
+                shake = 5; // Smaller shake for dead hits
             }
 
+            document.getElementById('score').innerText = score;
+            updateUI();
             flyingEgg = null; 
-            hit = true;
             break;
         }
+    }
+}
+
+function updateUI() {
+    const sDiv = document.getElementById('streak');
+    if(streak > 1) {
+        sDiv.style.display = 'block';
+        sDiv.innerText = `STREAK x${streak}`;
+    } else {
+        sDiv.style.display = 'none';
     }
 }
 
@@ -221,17 +249,16 @@ function loop() {
         shake *= 0.9;
     }
 
-    // 1. Draw Targets (Health Bars)
-    drawHealthBars();
+    drawTargets();
 
-    // 2. Particles
+    // Particles
     for (let p of particles) {
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
         ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fill();
     }
     ctx.globalAlpha = 1.0;
 
-    // 3. Slingshot
+    // Slingshot
     let apexX, apexY;
     if (dragging && !flyingEgg) {
         apexX = dragPos.x;
@@ -257,7 +284,7 @@ function loop() {
         drawEgg(sx, sy, scale);
     }
 
-    // 4. Popups
+    // Popups
     ctx.textAlign = "center";
     for(let p of popups) {
         ctx.shadowColor = "black"; ctx.shadowBlur = 4;
@@ -274,48 +301,46 @@ function loop() {
 
 // --- DRAWING HELPERS ---
 
-function drawHealthBars() {
+function drawTargets() {
     const sx = canvas.width / video.videoWidth;
     const sy = canvas.height / video.videoHeight;
     const now = Date.now();
 
     activeTargets.forEach(t => {
-        // Only draw if recently seen (prevent ghost bars)
-        if (now - t.lastSeen > 500) return;
+        if (now - t.lastSeen > 1000) return;
 
         let x = t.bbox[0] * sx;
         let y = t.bbox[1] * sy;
         let w = t.bbox[2] * sx;
         
-        // Bar Settings
-        const barWidth = Math.max(w, 100); // Min width 100
-        const barHeight = 15;
-        const barX = x + (w - barWidth) / 2;
-        const barY = y - 40; // 40px above head
+        let cx = x + w/2;
+        let cy = y - 40; // Above head
 
-        // Background (Black)
-        ctx.fillStyle = "rgba(0,0,0,0.8)";
-        ctx.fillRect(barX, barY, barWidth, barHeight);
+        if (t.hp > 0) {
+            // Draw Health Bar
+            const barWidth = Math.max(w, 100);
+            const barHeight = 15;
+            const barX = cx - barWidth/2;
 
-        // Foreground (Color based on HP)
-        let pct = t.hp / 100;
-        let color = "#00ff00"; // Green
-        if (pct < 0.5) color = "#ffeb3b"; // Yellow
-        if (pct < 0.25) color = "#ff1744"; // Red
-        
-        // "Dead" state
-        if (t.hp <= 0) {
-            ctx.fillStyle = "#444"; // Grey
-            ctx.fillText("KO", barX + barWidth/2, barY - 5);
-        } else {
+            ctx.fillStyle = "rgba(0,0,0,0.8)";
+            ctx.fillRect(barX, cy, barWidth, barHeight);
+
+            let pct = t.hp / 100;
+            let color = "#00ff00"; 
+            if (pct < 0.5) color = "#ffeb3b"; 
+            if (pct < 0.25) color = "#ff1744"; 
+            
             ctx.fillStyle = color;
-            ctx.fillRect(barX + 2, barY + 2, (barWidth - 4) * pct, barHeight - 4);
+            ctx.fillRect(barX + 2, cy + 2, (barWidth - 4) * pct, barHeight - 4);
+            ctx.strokeStyle = "white"; ctx.lineWidth = 2;
+            ctx.strokeRect(barX, cy, barWidth, barHeight);
+        } else {
+            // Draw SKULL
+            ctx.shadowColor = "black"; ctx.shadowBlur = 5;
+            ctx.font = "60px Arial";
+            ctx.fillText("💀", cx, cy + 20);
+            ctx.shadowBlur = 0;
         }
-
-        // White Border
-        ctx.strokeStyle = "white";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(barX, barY, barWidth, barHeight);
     });
 }
 
@@ -374,54 +399,28 @@ async function initAI() {
     setInterval(async () => {
         if(video.readyState===4) {
             const preds = await model.detect(video);
-            const people = preds.filter(p => p.class === 'person');
-            updateActiveTargets(people);
+            updateActiveTargets(preds.filter(p => p.class === 'person'));
         }
     }, 200);
 }
 
-// --- TARGET TRACKING (The "Brain" of the HP System) ---
 function updateActiveTargets(detectedPeople) {
     const now = Date.now();
-
-    // For each detected person, try to find a matching existing target
     detectedPeople.forEach(p => {
         let matched = false;
-        
-        // Simple distance matching: Is this detection close to a known target?
         for (let t of activeTargets) {
-            // Calculate center points
             let pCx = p.bbox[0] + p.bbox[2]/2;
             let pCy = p.bbox[1] + p.bbox[3]/2;
             let tCx = t.bbox[0] + t.bbox[2]/2;
             let tCy = t.bbox[1] + t.bbox[3]/2;
-            
-            // Distance squared
-            let dist = (pCx - tCx)**2 + (pCy - tCy)**2;
-            
-            // If close enough (within 100px squared approx), assume it's the same person
-            if (dist < 20000) { 
-                t.bbox = p.bbox; // Update position
-                t.lastSeen = now;
-                matched = true;
-                break;
+            if ((pCx - tCx)**2 + (pCy - tCy)**2 < 20000) { 
+                t.bbox = p.bbox; t.lastSeen = now; matched = true; break;
             }
         }
-
-        // If no match found, this is a new person!
-        if (!matched) {
-            activeTargets.push({
-                bbox: p.bbox,
-                hp: 100,
-                lastSeen: now
-            });
-        }
+        if (!matched) activeTargets.push({ bbox: p.bbox, hp: 100, lastSeen: now });
     });
-
-    // Cleanup: Remove targets we haven't seen in 2 seconds
     activeTargets = activeTargets.filter(t => now - t.lastSeen < 2000);
 }
-
 </script>
 </body>
 </html>
