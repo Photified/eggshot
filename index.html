@@ -3,31 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>EGGSHOT</title>
+    <title>Slingshot AR: ULTIMATE UI</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Arial Black', sans-serif; touch-action: none; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', Roboto, sans-serif; touch-action: none; }
         
         #camera-feed {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover; z-index: 1; filter: brightness(0.9);
+            object-fit: cover; z-index: 1; filter: brightness(0.85) contrast(1.1);
         }
         #game-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;
         }
+        
+        /* --- NEW HUD DESIGN --- */
         #hud {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;
         }
-        .score-box {
+
+        .score-card {
             position: absolute; top: 20px; left: 20px;
-            color: #fff; text-shadow: 2px 2px 0 #000;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+            padding: 10px 25px;
+            border-radius: 12px;
+            border-left: 6px solid #ffeb3b;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            transition: transform 0.1s;
         }
-        .score-val { font-size: 48px; color: #ffeb3b; line-height: 1; }
-        .streak-val { font-size: 20px; color: #ff5722; display: none; margin-top: 5px; }
+
+        .label {
+            font-size: 12px;
+            color: #bbb;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 700;
+        }
+
+        .score-val {
+            font-size: 42px;
+            font-weight: 900;
+            color: #fff;
+            line-height: 1;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        /* Streak Badge (Hidden by default) */
+        #streak-container {
+            position: absolute; top: 25px; left: 160px; /* Right of score */
+            display: none;
+            text-align: center;
+            transform-origin: center;
+            animation: pulse 0.5s infinite alternate;
+        }
+        
+        .streak-badge {
+            background: linear-gradient(135deg, #ff5722, #f44336);
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: 900;
+            font-size: 18px;
+            box-shadow: 0 0 15px #ff5722;
+            border: 2px solid #fff;
+            transform: rotate(-5deg);
+        }
+
+        @keyframes pulse {
+            from { transform: scale(1); }
+            to { transform: scale(1.1); }
+        }
         
         #status {
-            position: absolute; bottom: 80px; width: 100%; text-align: center;
-            color: white; font-size: 16px; text-transform: uppercase; letter-spacing: 2px;
-            text-shadow: 1px 1px 2px black; opacity: 0.8;
+            position: absolute; bottom: 100px; width: 100%; text-align: center;
+            color: rgba(255,255,255,0.7); font-size: 14px; text-transform: uppercase; letter-spacing: 3px;
+            font-weight: 600;
         }
     </style>
     
@@ -40,23 +89,28 @@
     <canvas id="game-layer"></canvas>
     
     <div id="hud">
-        <div class="score-box">
+        <div class="score-card" id="score-box">
+            <div class="label">Total Score</div>
             <div class="score-val" id="score">0</div>
-            <div class="streak-val" id="streak">STREAK x1</div>
         </div>
-        <div id="status">Drag Down to Shoot</div>
+        
+        <div id="streak-container">
+            <div class="streak-badge" id="streak-txt">🔥 5X COMBO</div>
+        </div>
+
+        <div id="status">Drag Down to Launch</div>
     </div>
 
 <script>
-// --- CONFIG ---
+// --- CONFIGURATION ---
 const C = {
-    gravity: 0.8,
-    zSpeed: 55,
-    lobPower: -5,
+    gravity: 0.85,
+    zSpeed: 60,
+    lobPower: -6,
     targetDist: 800,
     hitWindow: 200,
-    focalLength: 850,
-    anchorYRatio: 0.6
+    focalLength: 900,
+    anchorYRatio: 0.65 
 };
 
 // --- STATE ---
@@ -64,7 +118,7 @@ let canvas, ctx, video;
 let dragging = false;
 let dragPos = { x: 0, y: 0 };
 let flyingEgg = null; 
-let activeTargets = []; // { bbox, hp, lastSeen, respawnTimer }
+let activeTargets = []; 
 let particles = [];
 let popups = []; 
 let score = 0;
@@ -79,7 +133,7 @@ window.onload = async () => {
     resize();
     window.addEventListener('resize', resize);
 
-    // Input
+    // Input Handling
     const startDrag = (x, y) => {
         if (flyingEgg) return;
         if (y > window.innerHeight * 0.4) { dragging = true; dragPos = { x, y }; }
@@ -91,7 +145,6 @@ window.onload = async () => {
     canvas.addEventListener('touchmove', e => { e.preventDefault(); moveDrag(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
     canvas.addEventListener('touchend', e => { e.preventDefault(); endDrag(); }, {passive:false});
     
-    // AI
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         video.srcObject = stream;
@@ -103,7 +156,7 @@ window.onload = async () => {
 
 function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 
-// --- GAME LOGIC ---
+// --- GAME LOOP ---
 
 function fire() {
     const cx = window.innerWidth / 2;
@@ -111,17 +164,17 @@ function fire() {
     let dx = cx - dragPos.x;
     let dy = anchorY - dragPos.y; 
     
-    let launchVy = (dy * 0.12) + C.lobPower; 
+    let launchVy = (dy * 0.13) + C.lobPower; 
 
     flyingEgg = {
         x: cx,          
-        y: anchorY + 100, 
+        y: anchorY + 120, 
         z: 0,           
-        vx: dx * 0.15,    
+        vx: dx * 0.16,    
         vy: launchVy,     
         vz: C.zSpeed      
     };
-    shake = 8; 
+    shake = 12; 
 }
 
 function update() {
@@ -135,14 +188,13 @@ function update() {
     // Popups
     for(let i=popups.length-1; i>=0; i--) {
         let p = popups[i];
-        p.y -= 2; 
+        p.y -= 3; // Rise faster
         p.life -= 0.02;
         if(p.life <= 0) popups.splice(i,1);
     }
 
     if (!flyingEgg) return;
 
-    // Physics
     flyingEgg.x += flyingEgg.vx;
     flyingEgg.y += flyingEgg.vy;
     flyingEgg.z += flyingEgg.vz;
@@ -181,55 +233,58 @@ function checkHit() {
 
         if (screenX > tx && screenX < tx + tw && screenY > ty && screenY < ty + th) {
             
-            // HIT CONFIRMED
+            // --- HIT LOGIC ---
             let damage = 10;
             let isHeadshot = (screenY < ty + (th * 0.25)); 
             if (isHeadshot) damage = 25;
 
             createExplosion(screenX, screenY, scale); 
-            shake = 15;
-            hit = true;
+            shake = 20; // Big shake
+            
+            // Score Pop Animation
+            const scoreBox = document.getElementById('score-box');
+            scoreBox.style.transform = "scale(1.2)";
+            setTimeout(() => scoreBox.style.transform = "scale(1)", 100);
 
-            // Logic: Is target alive or dead?
             if (t.hp > 0) {
-                // ALIVE: Take Damage
                 t.hp -= damage;
                 score += damage;
                 createPopup(screenX, screenY, `-${damage}`, isHeadshot);
 
-                // Check KO
                 if (t.hp <= 0) {
                     t.hp = 0;
-                    createPopup(screenX, screenY - 50, "KO!", true);
-                    // Respawn after 4 seconds
+                    createPopup(screenX, screenY - 80, "KO!", true);
+                    streak++; // Kill counts as streak extension
                     setTimeout(() => { t.hp = 100; }, 4000);
                 } else {
                     streak++;
                 }
 
             } else {
-                // DEAD: Overkill Bonus
-                // Allow shooting the corpse for fun, but fewer points
+                // OVERKILL Logic
                 score += 5;
-                createPopup(screenX, screenY, "R.I.P", false);
-                shake = 5; // Smaller shake for dead hits
+                createPopup(screenX, screenY, "OVERKILL", false);
+                shake = 5; 
             }
 
             document.getElementById('score').innerText = score;
             updateUI();
             flyingEgg = null; 
+            hit = true;
             break;
         }
     }
 }
 
 function updateUI() {
-    const sDiv = document.getElementById('streak');
+    const sContainer = document.getElementById('streak-container');
+    const sTxt = document.getElementById('streak-txt');
+    
     if(streak > 1) {
-        sDiv.style.display = 'block';
-        sDiv.innerText = `STREAK x${streak}`;
+        sContainer.style.display = 'block';
+        sTxt.innerText = `🔥 ${streak}X STREAK`;
     } else {
-        sDiv.style.display = 'none';
+        sContainer.style.display = 'none';
     }
 }
 
@@ -241,6 +296,7 @@ function loop() {
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // Camera Shake
     if (shake > 0) {
         let sx = (Math.random() - 0.5) * shake;
         let sy = (Math.random() - 0.5) * shake;
@@ -249,16 +305,17 @@ function loop() {
         shake *= 0.9;
     }
 
+    // 1. Draw Targets
     drawTargets();
 
-    // Particles
+    // 2. Draw Particles
     for (let p of particles) {
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
         ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fill();
     }
     ctx.globalAlpha = 1.0;
 
-    // Slingshot
+    // 3. Slingshot Mechanics
     let apexX, apexY;
     if (dragging && !flyingEgg) {
         apexX = dragPos.x;
@@ -269,29 +326,33 @@ function loop() {
     }
 
     if (!flyingEgg || (flyingEgg && flyingEgg.z > 50)) {
-         drawConnectedBands(apexX, apexY);
+         drawAdvancedBands(apexX, apexY);
     }
 
     if (!flyingEgg) {
-        drawPouch(apexX, apexY);
-        drawEgg(apexX, apexY, 1.0);
+        drawDetailedPouch(apexX, apexY);
+        drawRealisticEgg(apexX, apexY, 1.0);
     } else {
         const scale = C.focalLength / (C.focalLength + flyingEgg.z);
         const cx = window.innerWidth / 2;
         const cy = window.innerHeight / 2;
         const sx = (flyingEgg.x - cx) * scale + cx;
         const sy = (flyingEgg.y - cy) * scale + cy;
-        drawEgg(sx, sy, scale);
+        drawRealisticEgg(sx, sy, scale);
     }
 
-    // Popups
+    // 4. Floating Popups
     ctx.textAlign = "center";
     for(let p of popups) {
         ctx.shadowColor = "black"; ctx.shadowBlur = 4;
         ctx.fillStyle = p.color;
-        ctx.font = `900 ${p.size}px Arial`; 
+        // Dynamic font size
+        ctx.font = `900 ${p.size}px 'Arial Black'`; 
         ctx.globalAlpha = p.life;
         ctx.fillText(p.text, p.x, p.y);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "black";
+        ctx.strokeText(p.text, p.x, p.y);
         ctx.shadowBlur = 0;
     }
     ctx.globalAlpha = 1.0;
@@ -299,7 +360,7 @@ function loop() {
     if (shake > 0) ctx.restore();
 }
 
-// --- DRAWING HELPERS ---
+// --- ADVANCED DRAWING (No Images Required) ---
 
 function drawTargets() {
     const sx = canvas.width / video.videoWidth;
@@ -312,36 +373,136 @@ function drawTargets() {
         let x = t.bbox[0] * sx;
         let y = t.bbox[1] * sy;
         let w = t.bbox[2] * sx;
-        
+        let h = t.bbox[3] * sy;
         let cx = x + w/2;
-        let cy = y - 40; // Above head
+        let cy = y - 50; 
 
         if (t.hp > 0) {
-            // Draw Health Bar
-            const barWidth = Math.max(w, 100);
-            const barHeight = 15;
+            // FIXED: Clamp health bar width
+            const barWidth = Math.min(Math.max(w, 80), 200); // Min 80px, Max 200px
+            const barHeight = 16;
             const barX = cx - barWidth/2;
 
-            ctx.fillStyle = "rgba(0,0,0,0.8)";
-            ctx.fillRect(barX, cy, barWidth, barHeight);
+            // Bar Container
+            ctx.fillStyle = "#222";
+            ctx.beginPath();
+            ctx.roundRect(barX, cy, barWidth, barHeight, 4);
+            ctx.fill();
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 2;
+            ctx.stroke();
 
+            // HP Fill
             let pct = t.hp / 100;
-            let color = "#00ff00"; 
-            if (pct < 0.5) color = "#ffeb3b"; 
-            if (pct < 0.25) color = "#ff1744"; 
+            let color = "#4caf50"; // Nice Green
+            if (pct < 0.5) color = "#ffc107"; // Amber
+            if (pct < 0.25) color = "#f44336"; // Red
             
-            ctx.fillStyle = color;
-            ctx.fillRect(barX + 2, cy + 2, (barWidth - 4) * pct, barHeight - 4);
-            ctx.strokeStyle = "white"; ctx.lineWidth = 2;
-            ctx.strokeRect(barX, cy, barWidth, barHeight);
+            if (pct > 0) {
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.roundRect(barX + 2, cy + 2, (barWidth - 4) * pct, barHeight - 4, 2);
+                ctx.fill();
+            }
         } else {
-            // Draw SKULL
-            ctx.shadowColor = "black"; ctx.shadowBlur = 5;
-            ctx.font = "60px Arial";
-            ctx.fillText("💀", cx, cy + 20);
+            // SKULL MODE
+            ctx.shadowColor = "black"; ctx.shadowBlur = 10;
+            ctx.font = "80px Arial";
+            ctx.fillText("💀", cx, cy + 40);
             ctx.shadowBlur = 0;
         }
     });
+}
+
+function drawAdvancedBands(tipX, tipY) {
+    const w = canvas.width;
+    const ay = canvas.height * C.anchorYRatio; 
+    
+    // Draw twice: once for shadow/outline, once for core
+    // 1. Dark Outline (Thick)
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.beginPath(); 
+    ctx.moveTo(0, ay); ctx.quadraticCurveTo(w * 0.2, tipY, tipX, tipY);
+    ctx.moveTo(w, ay); ctx.quadraticCurveTo(w * 0.8, tipY, tipX, tipY);
+    ctx.lineWidth = 18; ctx.strokeStyle = "#1a1a1a"; ctx.stroke();
+
+    // 2. Rubber Core (Color)
+    ctx.beginPath(); 
+    ctx.moveTo(0, ay); ctx.quadraticCurveTo(w * 0.2, tipY, tipX, tipY);
+    ctx.moveTo(w, ay); ctx.quadraticCurveTo(w * 0.8, tipY, tipX, tipY);
+    ctx.lineWidth = 10; ctx.strokeStyle = "#ffb74d"; ctx.stroke(); // Orange latex look
+    
+    // 3. Highlight (Thin center)
+    ctx.beginPath(); 
+    ctx.moveTo(0, ay); ctx.quadraticCurveTo(w * 0.2, tipY, tipX, tipY);
+    ctx.moveTo(w, ay); ctx.quadraticCurveTo(w * 0.8, tipY, tipX, tipY);
+    ctx.lineWidth = 4; ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.stroke();
+}
+
+function drawDetailedPouch(x, y) {
+    ctx.save(); ctx.translate(x, y);
+    const rot = (x - window.innerWidth/2) * 0.001; ctx.rotate(rot);
+    
+    // Leather Patch
+    ctx.fillStyle = "#5d4037"; // Brown Leather
+    ctx.beginPath(); ctx.roundRect(-35, -28, 70, 56, 10); ctx.fill();
+    
+    // Border
+    ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 3; ctx.stroke();
+    
+    // Stitching Effect (Dashed Line)
+    ctx.beginPath(); ctx.roundRect(-28, -21, 56, 42, 6);
+    ctx.strokeStyle = "#d7ccc8"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]); 
+    ctx.stroke();
+    
+    ctx.restore();
+}
+
+function drawRealisticEgg(x, y, scale) {
+    const r = 26 * scale; if (r < 1) return;
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    // 1. Shadow (if sitting in pouch)
+    if (scale === 1.0) {
+        ctx.fillStyle = "rgba(0,0,0,0.3)";
+        ctx.beginPath(); ctx.ellipse(5, 5, r, r, 0, 0, Math.PI*2); ctx.fill();
+    }
+
+    // 2. Base Egg Shape
+    ctx.beginPath(); ctx.ellipse(0, 0, r * 0.88, r, 0, 0, Math.PI * 2);
+    
+    // 3. Radial Gradient (Shading)
+    let grad = ctx.createRadialGradient(-r/3, -r/3, r/5, 0, 0, r);
+    grad.addColorStop(0, "#ffffff");      // Highlight
+    grad.addColorStop(0.5, "#f0f0f0");    // Mid
+    grad.addColorStop(1, "#d1c4e9");      // Shadow (slight purple tint for depth)
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // 4. Texture (Speckles)
+    ctx.fillStyle = "rgba(160, 82, 45, 0.15)"; // Brownish speckles
+    for(let i=0; i<5; i++) {
+        let rx = (Math.random()-0.5) * r;
+        let ry = (Math.random()-0.5) * r;
+        ctx.beginPath(); ctx.arc(rx, ry, scale, 0, Math.PI*2); ctx.fill();
+    }
+
+    ctx.restore();
+}
+
+function createExplosion(x, y, scale) {
+    for(let i=0; i<30; i++) {
+        particles.push({
+            x: x, y: y,
+            vx: (Math.random()-0.5) * 35 * scale,
+            vy: (Math.random()-0.5) * 35 * scale,
+            life: 1.0,
+            color: Math.random() > 0.4 ? '#ffeb3b' : '#ffffff', // Yolk & White
+            r: (Math.random() * 8 + 3) * scale
+        });
+    }
 }
 
 function createPopup(x, y, text, isCrit) {
@@ -349,49 +510,9 @@ function createPopup(x, y, text, isCrit) {
         x: x, y: y - 50,
         text: text,
         life: 1.0,
-        color: isCrit ? "#ff1744" : "#ffffff",
-        size: isCrit ? 45 : 30
+        color: isCrit ? "#ff1744" : "#ffffff", // Red if crit, white if normal
+        size: isCrit ? 50 : 35
     });
-}
-
-function drawConnectedBands(tipX, tipY) {
-    const w = canvas.width;
-    const ay = canvas.height * C.anchorYRatio; 
-    ctx.lineCap = "round"; ctx.lineJoin = "round";
-    ctx.beginPath(); ctx.moveTo(0, ay); ctx.quadraticCurveTo(w * 0.2, tipY, tipX, tipY);
-    ctx.lineWidth = 14; ctx.strokeStyle = "#3e2723"; ctx.stroke();
-    ctx.lineWidth = 6; ctx.strokeStyle = "#a1887f"; ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(w, ay); ctx.quadraticCurveTo(w * 0.8, tipY, tipX, tipY);
-    ctx.lineWidth = 14; ctx.strokeStyle = "#3e2723"; ctx.stroke();
-    ctx.lineWidth = 6; ctx.strokeStyle = "#a1887f"; ctx.stroke();
-}
-
-function drawPouch(x, y) {
-    ctx.save(); ctx.translate(x, y);
-    const rot = (x - window.innerWidth/2) * 0.001; ctx.rotate(rot);
-    ctx.fillStyle = "#4e342e"; ctx.strokeStyle = "#271c19"; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.roundRect(-30, -25, 60, 50, 8); ctx.fill(); ctx.stroke(); ctx.restore();
-}
-
-function drawEgg(x, y, scale) {
-    const r = 24 * scale; if (r < 1) return;
-    ctx.beginPath(); ctx.ellipse(x, y, r * 0.85, r, 0, 0, Math.PI * 2);
-    let grad = ctx.createRadialGradient(x - r/3, y - r/3, r/4, x, y, r);
-    grad.addColorStop(0, "#fff"); grad.addColorStop(1, "#ddd");
-    ctx.fillStyle = grad; ctx.fill();
-}
-
-function createExplosion(x, y, scale) {
-    for(let i=0; i<25; i++) {
-        particles.push({
-            x: x, y: y,
-            vx: (Math.random()-0.5) * 30 * scale,
-            vy: (Math.random()-0.5) * 30 * scale,
-            life: 1.0,
-            color: Math.random() > 0.4 ? '#fdd835' : '#ffffff',
-            r: (Math.random() * 8 + 4) * scale
-        });
-    }
 }
 
 async function initAI() {
