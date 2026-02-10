@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Slingshot AR: PERFECTED</title>
+    <title>Slingshot AR: BOSS BATTLE</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Arial Black', sans-serif; touch-action: none; }
         
         #camera-feed {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover; z-index: 1; filter: brightness(0.8);
+            object-fit: cover; z-index: 1; filter: brightness(0.9);
         }
         #game-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;
@@ -17,13 +17,10 @@
         #hud {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;
         }
-        .score-box {
-            position: absolute; top: 20px; left: 20px;
-            color: #fff; text-shadow: 2px 2px 0 #000;
+        .score-val { 
+            position: absolute; top: 30px; left: 20px;
+            color: #ffeb3b; font-size: 40px; text-shadow: 2px 2px 0 #000;
         }
-        .score-val { font-size: 48px; color: #ffeb3b; line-height: 1; }
-        .streak-val { font-size: 20px; color: #ff5722; display: none; margin-top: 5px; }
-        
         #status {
             position: absolute; bottom: 80px; width: 100%; text-align: center;
             color: white; font-size: 16px; text-transform: uppercase; letter-spacing: 2px;
@@ -40,21 +37,18 @@
     <canvas id="game-layer"></canvas>
     
     <div id="hud">
-        <div class="score-box">
-            <div class="score-val" id="score">0</div>
-            <div class="streak-val" id="streak">STREAK x1</div>
-        </div>
-        <div id="status">Drag Down to Shoot</div>
+        <div class="score-val" id="score">0</div>
+        <div id="status">Target Acquired</div>
     </div>
 
 <script>
-// --- PHYSICS TUNING ---
+// --- CONFIG ---
 const C = {
-    gravity: 0.8,        // Stronger gravity = Better Arc (Up then Down)
-    zSpeed: 50,          // Speed into distance
-    lobPower: -4,        // Subtle pop-up (was -12, which was too much)
-    targetDist: 800,     // Distance where hits happen
-    hitWindow: 200,      // Hit forgiveness
+    gravity: 0.8,
+    zSpeed: 55,
+    lobPower: -5,
+    targetDist: 800,
+    hitWindow: 200,
     focalLength: 850,
     anchorYRatio: 0.6
 };
@@ -64,11 +58,11 @@ let canvas, ctx, video;
 let dragging = false;
 let dragPos = { x: 0, y: 0 };
 let flyingEgg = null; 
-let targets = [];
+// We now store detailed objects: { bbox: [x,y,w,h], hp: 100, maxHp: 100, lastSeen: timestamp }
+let activeTargets = []; 
 let particles = [];
 let popups = []; 
 let score = 0;
-let streak = 0;
 let shake = 0;
 
 // --- INIT ---
@@ -79,10 +73,9 @@ window.onload = async () => {
     resize();
     window.addEventListener('resize', resize);
 
-    // Input Handling
+    // Input
     const startDrag = (x, y) => {
         if (flyingEgg) return;
-        // Only allow drag in bottom half
         if (y > window.innerHeight * 0.4) { dragging = true; dragPos = { x, y }; }
     };
     const moveDrag = (x, y) => { if (dragging) dragPos = { x, y }; };
@@ -109,19 +102,14 @@ function resize() { canvas.width = window.innerWidth; canvas.height = window.inn
 function fire() {
     const cx = window.innerWidth / 2;
     const anchorY = window.innerHeight * C.anchorYRatio; 
-    
     let dx = cx - dragPos.x;
     let dy = anchorY - dragPos.y; 
     
-    // PHYSICS CALCULATION
-    // dy is negative (because we pull down). 
-    // We multiply by 0.12 to damp it (so you have to pull hard to get height)
-    // We add lobPower (-4) to ensure it clears the pouch
     let launchVy = (dy * 0.12) + C.lobPower; 
 
     flyingEgg = {
         x: cx,          
-        y: anchorY + 100, // Spawn slightly below bands
+        y: anchorY + 100, 
         z: 0,           
         vx: dx * 0.15,    
         vy: launchVy,     
@@ -148,25 +136,14 @@ function update() {
 
     if (!flyingEgg) return;
 
-    // Egg Physics
+    // Physics
     flyingEgg.x += flyingEgg.vx;
     flyingEgg.y += flyingEgg.vy;
     flyingEgg.z += flyingEgg.vz;
-    
-    // Apply Gravity (This pulls the lob down)
     flyingEgg.vy += C.gravity; 
 
-    // Kill if off screen / too far
-    if (flyingEgg.z > 2500 || flyingEgg.y > 2000) { 
-        if(flyingEgg) {
-            streak = 0; // Miss reset streak
-            updateUI();
-        }
-        flyingEgg = null; 
-        return; 
-    }
+    if (flyingEgg.z > 2500 || flyingEgg.y > 2000) { flyingEgg = null; return; }
 
-    // Collision Check
     if (Math.abs(flyingEgg.z - C.targetDist) < C.hitWindow) {
         checkHit();
     }
@@ -181,44 +158,50 @@ function checkHit() {
     const sy = canvas.height / video.videoHeight;
 
     let hit = false;
-    for (let t of targets) {
+    // Iterate backwards so we can modify if needed
+    for (let i = activeTargets.length - 1; i >= 0; i--) {
+        let t = activeTargets[i];
         let tx = t.bbox[0] * sx;
         let ty = t.bbox[1] * sy;
         let tw = t.bbox[2] * sx;
         let th = t.bbox[3] * sy;
 
+        // Bounding Box Check
         if (screenX > tx && screenX < tx + tw && screenY > ty && screenY < ty + th) {
-            // HEADSHOT (Top 20%)
-            let isHeadshot = (screenY < ty + (th * 0.2));
-            handleHit(screenX, screenY, scale, isHeadshot);
+            
+            // It's a hit!
+            let damage = 10;
+            let isHeadshot = (screenY < ty + (th * 0.25)); // Top 25% is head
+            
+            if (isHeadshot) {
+                damage = 25;
+            }
+
+            // Apply Damage
+            t.hp -= damage;
+            if (t.hp < 0) t.hp = 0;
+
+            // Update Global Score
+            score += damage;
+            document.getElementById('score').innerText = score;
+
+            // Visuals
+            createExplosion(screenX, screenY, scale); 
+            createPopup(screenX, screenY, `-${damage}`, isHeadshot);
+            shake = 15;
+            
+            // If killed
+            if (t.hp === 0) {
+                 createPopup(screenX, screenY - 50, "KO!", true);
+                 // Optional: Respawn logic or leave them dead
+                 // For fun, let's reset them after 3 seconds
+                 setTimeout(() => { t.hp = 100; }, 3000);
+            }
+
+            flyingEgg = null; 
             hit = true;
             break;
         }
-    }
-}
-
-function handleHit(x, y, scale, isHeadshot) {
-    streak++;
-    let points = 100 * streak;
-    if (isHeadshot) points *= 2;
-    
-    score += points;
-    updateUI();
-    
-    createExplosion(x, y, scale); 
-    createPopup(x, y, `+${points}`, isHeadshot);
-    shake = 20;
-    flyingEgg = null; 
-}
-
-function updateUI() {
-    document.getElementById('score').innerText = score;
-    const sDiv = document.getElementById('streak');
-    if(streak > 1) {
-        sDiv.style.display = 'block';
-        sDiv.innerText = `STREAK x${streak}`;
-    } else {
-        sDiv.style.display = 'none';
     }
 }
 
@@ -238,35 +221,34 @@ function loop() {
         shake *= 0.9;
     }
 
-    // 1. Particles
+    // 1. Draw Targets (Health Bars)
+    drawHealthBars();
+
+    // 2. Particles
     for (let p of particles) {
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
         ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fill();
     }
     ctx.globalAlpha = 1.0;
 
-    // 2. Slingshot Logic
+    // 3. Slingshot
     let apexX, apexY;
-    
     if (dragging && !flyingEgg) {
         apexX = dragPos.x;
         apexY = dragPos.y;
     } else {
         apexX = canvas.width / 2;
-        apexY = (canvas.height * C.anchorYRatio) + 180; // Hangs 180px below anchor
+        apexY = (canvas.height * C.anchorYRatio) + 180; 
     }
 
-    // Draw Bands (Connected to Apex)
     if (!flyingEgg || (flyingEgg && flyingEgg.z > 50)) {
          drawConnectedBands(apexX, apexY);
     }
 
-    // Draw Egg/Pouch
     if (!flyingEgg) {
         drawPouch(apexX, apexY);
         drawEgg(apexX, apexY, 1.0);
     } else {
-        // Flying Egg (3D Perspective)
         const scale = C.focalLength / (C.focalLength + flyingEgg.z);
         const cx = window.innerWidth / 2;
         const cy = window.innerHeight / 2;
@@ -275,16 +257,15 @@ function loop() {
         drawEgg(sx, sy, scale);
     }
 
-    // 3. Popups (Top Layer)
+    // 4. Popups
     ctx.textAlign = "center";
     for(let p of popups) {
-        ctx.shadowColor = "black";
-        ctx.shadowBlur = 4;
+        ctx.shadowColor = "black"; ctx.shadowBlur = 4;
         ctx.fillStyle = p.color;
         ctx.font = `900 ${p.size}px Arial`; 
         ctx.globalAlpha = p.life;
         ctx.fillText(p.text, p.x, p.y);
-        ctx.shadowBlur = 0; // Reset
+        ctx.shadowBlur = 0;
     }
     ctx.globalAlpha = 1.0;
 
@@ -293,69 +274,86 @@ function loop() {
 
 // --- DRAWING HELPERS ---
 
-function createPopup(x, y, text, isHeadshot) {
+function drawHealthBars() {
+    const sx = canvas.width / video.videoWidth;
+    const sy = canvas.height / video.videoHeight;
+    const now = Date.now();
+
+    activeTargets.forEach(t => {
+        // Only draw if recently seen (prevent ghost bars)
+        if (now - t.lastSeen > 500) return;
+
+        let x = t.bbox[0] * sx;
+        let y = t.bbox[1] * sy;
+        let w = t.bbox[2] * sx;
+        
+        // Bar Settings
+        const barWidth = Math.max(w, 100); // Min width 100
+        const barHeight = 15;
+        const barX = x + (w - barWidth) / 2;
+        const barY = y - 40; // 40px above head
+
+        // Background (Black)
+        ctx.fillStyle = "rgba(0,0,0,0.8)";
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+
+        // Foreground (Color based on HP)
+        let pct = t.hp / 100;
+        let color = "#00ff00"; // Green
+        if (pct < 0.5) color = "#ffeb3b"; // Yellow
+        if (pct < 0.25) color = "#ff1744"; // Red
+        
+        // "Dead" state
+        if (t.hp <= 0) {
+            ctx.fillStyle = "#444"; // Grey
+            ctx.fillText("KO", barX + barWidth/2, barY - 5);
+        } else {
+            ctx.fillStyle = color;
+            ctx.fillRect(barX + 2, barY + 2, (barWidth - 4) * pct, barHeight - 4);
+        }
+
+        // White Border
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
+    });
+}
+
+function createPopup(x, y, text, isCrit) {
     popups.push({
         x: x, y: y - 50,
-        text: isHeadshot ? "HEADSHOT!" : text,
+        text: text,
         life: 1.0,
-        color: isHeadshot ? "#ff1744" : "#ffeb3b",
-        size: isHeadshot ? 45 : 35
+        color: isCrit ? "#ff1744" : "#ffffff",
+        size: isCrit ? 45 : 30
     });
-    if(isHeadshot) {
-        popups.push({ x: x, y: y, text: text, life: 1.0, color: "#ffeb3b", size: 35 });
-    }
 }
 
 function drawConnectedBands(tipX, tipY) {
     const w = canvas.width;
     const ay = canvas.height * C.anchorYRatio; 
-    
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    
-    // Left
-    ctx.beginPath();
-    ctx.moveTo(0, ay); 
-    ctx.quadraticCurveTo(w * 0.2, tipY, tipX, tipY);
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.beginPath(); ctx.moveTo(0, ay); ctx.quadraticCurveTo(w * 0.2, tipY, tipX, tipY);
     ctx.lineWidth = 14; ctx.strokeStyle = "#3e2723"; ctx.stroke();
     ctx.lineWidth = 6; ctx.strokeStyle = "#a1887f"; ctx.stroke();
-
-    // Right
-    ctx.beginPath();
-    ctx.moveTo(w, ay); 
-    ctx.quadraticCurveTo(w * 0.8, tipY, tipX, tipY);
+    ctx.beginPath(); ctx.moveTo(w, ay); ctx.quadraticCurveTo(w * 0.8, tipY, tipX, tipY);
     ctx.lineWidth = 14; ctx.strokeStyle = "#3e2723"; ctx.stroke();
     ctx.lineWidth = 6; ctx.strokeStyle = "#a1887f"; ctx.stroke();
 }
 
 function drawPouch(x, y) {
-    ctx.save();
-    ctx.translate(x, y);
-    const rot = (x - window.innerWidth/2) * 0.001;
-    ctx.rotate(rot);
-    
-    ctx.fillStyle = "#4e342e";
-    ctx.strokeStyle = "#271c19";
-    ctx.lineWidth = 2;
-    
-    ctx.beginPath();
-    ctx.roundRect(-30, -25, 60, 50, 8);
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
+    ctx.save(); ctx.translate(x, y);
+    const rot = (x - window.innerWidth/2) * 0.001; ctx.rotate(rot);
+    ctx.fillStyle = "#4e342e"; ctx.strokeStyle = "#271c19"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(-30, -25, 60, 50, 8); ctx.fill(); ctx.stroke(); ctx.restore();
 }
 
 function drawEgg(x, y, scale) {
-    const r = 24 * scale;
-    if (r < 1) return;
-
-    ctx.beginPath();
-    ctx.ellipse(x, y, r * 0.85, r, 0, 0, Math.PI * 2);
+    const r = 24 * scale; if (r < 1) return;
+    ctx.beginPath(); ctx.ellipse(x, y, r * 0.85, r, 0, 0, Math.PI * 2);
     let grad = ctx.createRadialGradient(x - r/3, y - r/3, r/4, x, y, r);
-    grad.addColorStop(0, "#fff");
-    grad.addColorStop(1, "#ddd");
-    ctx.fillStyle = grad;
-    ctx.fill();
+    grad.addColorStop(0, "#fff"); grad.addColorStop(1, "#ddd");
+    ctx.fillStyle = grad; ctx.fill();
 }
 
 function createExplosion(x, y, scale) {
@@ -374,9 +372,56 @@ function createExplosion(x, y, scale) {
 async function initAI() {
     const model = await cocoSsd.load();
     setInterval(async () => {
-        if(video.readyState===4) targets = (await model.detect(video)).filter(p=>p.class==='person');
+        if(video.readyState===4) {
+            const preds = await model.detect(video);
+            const people = preds.filter(p => p.class === 'person');
+            updateActiveTargets(people);
+        }
     }, 200);
 }
+
+// --- TARGET TRACKING (The "Brain" of the HP System) ---
+function updateActiveTargets(detectedPeople) {
+    const now = Date.now();
+
+    // For each detected person, try to find a matching existing target
+    detectedPeople.forEach(p => {
+        let matched = false;
+        
+        // Simple distance matching: Is this detection close to a known target?
+        for (let t of activeTargets) {
+            // Calculate center points
+            let pCx = p.bbox[0] + p.bbox[2]/2;
+            let pCy = p.bbox[1] + p.bbox[3]/2;
+            let tCx = t.bbox[0] + t.bbox[2]/2;
+            let tCy = t.bbox[1] + t.bbox[3]/2;
+            
+            // Distance squared
+            let dist = (pCx - tCx)**2 + (pCy - tCy)**2;
+            
+            // If close enough (within 100px squared approx), assume it's the same person
+            if (dist < 20000) { 
+                t.bbox = p.bbox; // Update position
+                t.lastSeen = now;
+                matched = true;
+                break;
+            }
+        }
+
+        // If no match found, this is a new person!
+        if (!matched) {
+            activeTargets.push({
+                bbox: p.bbox,
+                hp: 100,
+                lastSeen: now
+            });
+        }
+    });
+
+    // Cleanup: Remove targets we haven't seen in 2 seconds
+    activeTargets = activeTargets.filter(t => now - t.lastSeen < 2000);
+}
+
 </script>
 </body>
 </html>
