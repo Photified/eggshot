@@ -15,68 +15,54 @@
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;
         }
         
-        /* UI LAYER */
+        /* HUD */
         #hud {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;
         }
 
-        /* Top Bar */
         .top-bar {
-            position: absolute;
-            top: 20px;
-            left: 0;
-            width: 100%;
-            padding: 0 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            box-sizing: border-box;
+            position: absolute; top: 20px; left: 0; width: 100%; padding: 0 20px;
+            display: flex; justify-content: space-between; align-items: flex-start; box-sizing: border-box;
         }
 
         .score-container {
-            background: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(8px);
-            padding: 8px 16px;
-            border-radius: 10px;
-            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
+            padding: 8px 16px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2);
             color: white;
-            text-align: left;
         }
-
-        .score-label { font-size: 10px; color: #aaa; letter-spacing: 1px; font-weight: 700; text-transform: uppercase; }
+        .score-label { font-size: 10px; color: #aaa; font-weight: 700; text-transform: uppercase; }
         .score-val { font-size: 32px; font-weight: 800; line-height: 1; margin-top: 2px; }
 
-        /* Streak Badge */
         .streak-badge {
             background: linear-gradient(45deg, #ff9800, #ff5722);
-            padding: 5px 12px;
-            border-radius: 20px;
-            color: white;
-            font-weight: 900;
-            font-size: 14px;
-            transform: rotate(-3deg);
-            box-shadow: 0 4px 10px rgba(255, 87, 34, 0.4);
-            display: none; 
+            padding: 5px 12px; border-radius: 20px; color: white;
+            font-weight: 900; font-size: 14px; transform: rotate(-3deg);
+            box-shadow: 0 4px 10px rgba(255, 87, 34, 0.4); display: none; 
         }
 
-        /* Instructions - NOW AT THE BOTTOM */
-        #instructions {
-            position: absolute;
-            bottom: 80px; /* Safe area at bottom */
-            width: 100%;
-            text-align: center;
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 12px;
-            letter-spacing: 3px;
-            text-transform: uppercase;
-            font-weight: 600;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.8);
-            animation: pulse 2s infinite;
-            transition: opacity 0.3s;
-            pointer-events: none;
+        /* WEAPON SELECTOR */
+        #weapon-bar {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 10px; pointer-events: auto; /* Allow clicks */
         }
-        
-        @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 0.8; } 100% { opacity: 0.4; } }
+
+        .weapon-card {
+            width: 60px; height: 60px; background: rgba(0,0,0,0.5); border-radius: 12px;
+            border: 2px solid rgba(255,255,255,0.1); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; opacity: 0.5; transition: all 0.2s;
+        }
+        .weapon-card.active { border-color: #ffeb3b; opacity: 1; transform: scale(1.1); background: rgba(0,0,0,0.8); }
+        .weapon-card.locked { filter: grayscale(1); opacity: 0.3; }
+        .weapon-icon { font-size: 24px; }
+        .weapon-cost { font-size: 10px; color: #aaa; margin-top: 2px; }
+
+        #unlock-msg {
+            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(255, 235, 59, 0.9); color: black; padding: 20px 40px;
+            border-radius: 50px; font-weight: 900; font-size: 24px; text-transform: uppercase;
+            box-shadow: 0 0 30px rgba(255, 235, 59, 0.5); opacity: 0; pointer-events: none;
+            transition: opacity 0.5s; text-align: center;
+        }
     </style>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
@@ -95,21 +81,43 @@
             </div>
             <div class="streak-badge" id="streak-badge">COMBO x2</div>
         </div>
-        
-        <div id="instructions">Drag Down to Launch</div>
+
+        <div id="unlock-msg">NEW WEAPON UNLOCKED!</div>
+
+        <div id="weapon-bar">
+            <div class="weapon-card active" id="w-egg" onclick="selectWeapon('egg')">
+                <div class="weapon-icon">🥚</div>
+                <div class="weapon-cost">INF</div>
+            </div>
+            <div class="weapon-card locked" id="w-balloon" onclick="selectWeapon('balloon')">
+                <div class="weapon-icon">💧</div>
+                <div class="weapon-cost">500</div>
+            </div>
+            <div class="weapon-card locked" id="w-anvil" onclick="selectWeapon('anvil')">
+                <div class="weapon-icon">🧱</div>
+                <div class="weapon-cost">1500</div>
+            </div>
+        </div>
     </div>
 
 <script>
 // --- CONFIG ---
 const C = {
-    gravity: 0.85,
     zSpeed: 60,
-    lobPower: -6,
     targetDist: 800,
     hitWindow: 200,
     focalLength: 900,
-    anchorYRatio: 0.60  
+    anchorYRatio: 0.65 
 };
+
+// --- WEAPON DEFINITIONS ---
+const WEAPONS = {
+    egg: { id: 'egg', name: 'Egg', gravity: 0.85, damage: 15, speed: 60, icon: '🥚', unlock: 0, scale: 1.0 },
+    balloon: { id: 'balloon', name: 'Balloon', gravity: 1.2, damage: 40, speed: 45, icon: '💧', unlock: 500, scale: 1.4 },
+    anvil: { id: 'anvil', name: 'Anvil', gravity: 2.0, damage: 100, speed: 40, icon: '🧱', unlock: 1500, scale: 2.5 }
+};
+
+let currentWeapon = 'egg';
 
 // --- STATE ---
 let canvas, ctx, video;
@@ -134,26 +142,24 @@ window.onload = async () => {
     // Input
     const startDrag = (x, y) => {
         if (flyingEgg) return;
-        // Allow dragging in bottom 40% of screen
-        if (y > window.innerHeight * 0.4) { 
-            dragging = true; 
-            dragPos = { x, y }; 
-            document.getElementById('instructions').style.opacity = 0; // Hide on touch
-        }
+        if (y > window.innerHeight * 0.4) { dragging = true; dragPos = { x, y }; }
     };
     const moveDrag = (x, y) => { if (dragging) dragPos = { x, y }; };
-    const endDrag = () => { 
-        if (dragging) { 
-            dragging = false; 
-            fire(); 
-        } 
-    };
+    const endDrag = () => { if (dragging) { dragging = false; fire(); } };
 
-    canvas.addEventListener('touchstart', e => { e.preventDefault(); startDrag(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
-    canvas.addEventListener('touchmove', e => { e.preventDefault(); moveDrag(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
-    canvas.addEventListener('touchend', e => { e.preventDefault(); endDrag(); }, {passive:false});
+    canvas.addEventListener('touchstart', e => { 
+        // Prevent drag if touching weapon bar
+        if(e.target.closest('.weapon-card')) return;
+        e.preventDefault(); 
+        startDrag(e.touches[0].clientX, e.touches[0].clientY); 
+    }, {passive:false});
     
-    // AI
+    canvas.addEventListener('touchmove', e => { e.preventDefault(); moveDrag(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
+    canvas.addEventListener('touchend', e => { 
+        if(e.target.closest('.weapon-card')) return;
+        e.preventDefault(); endDrag(); 
+    }, {passive:false});
+    
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         video.srcObject = stream;
@@ -165,6 +171,40 @@ window.onload = async () => {
 
 function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 
+function selectWeapon(id) {
+    const w = WEAPONS[id];
+    if (score >= w.unlock) {
+        currentWeapon = id;
+        // UI Update
+        document.querySelectorAll('.weapon-card').forEach(el => el.classList.remove('active'));
+        document.getElementById('w-' + id).classList.add('active');
+    }
+}
+
+function checkUnlocks() {
+    // Balloon
+    if (score >= WEAPONS.balloon.unlock && document.getElementById('w-balloon').classList.contains('locked')) {
+        document.getElementById('w-balloon').classList.remove('locked');
+        showUnlock("WATER BALLOON UNLOCKED!");
+    }
+    // Anvil
+    if (score >= WEAPONS.anvil.unlock && document.getElementById('w-anvil').classList.contains('locked')) {
+        document.getElementById('w-anvil').classList.remove('locked');
+        showUnlock("HEAVY ANVIL UNLOCKED!");
+    }
+}
+
+function showUnlock(msg) {
+    const el = document.getElementById('unlock-msg');
+    el.innerText = msg;
+    el.style.opacity = 1;
+    el.style.transform = "translate(-50%, -50%) scale(1.1)";
+    setTimeout(() => {
+        el.style.opacity = 0;
+        el.style.transform = "translate(-50%, -50%) scale(1)";
+    }, 3000);
+}
+
 // --- LOGIC ---
 function fire() {
     const cx = window.innerWidth / 2;
@@ -172,17 +212,26 @@ function fire() {
     let dx = cx - dragPos.x;
     let dy = anchorY - dragPos.y; 
     
-    let launchVy = (dy * 0.13) + C.lobPower; 
+    const w = WEAPONS[currentWeapon];
+
+    // Physics adjustment based on weapon weight
+    // Heavier weapons (Anvil) need more lob power or they hit the floor immediately
+    let lob = -6;
+    if (w.id === 'anvil') lob = -12; // Massive heave needed for anvil
+    if (w.id === 'balloon') lob = -8;
+
+    let launchVy = (dy * 0.13) + lob; 
 
     flyingEgg = {
+        type: w.id,
         x: cx,          
         y: anchorY + 120, 
         z: 0,           
         vx: dx * 0.16,    
         vy: launchVy,     
-        vz: C.zSpeed      
+        vz: w.speed      
     };
-    shake = 10; 
+    shake = w.id === 'anvil' ? 20 : 10; 
 }
 
 function update() {
@@ -203,10 +252,12 @@ function update() {
 
     if (!flyingEgg) return;
 
+    const w = WEAPONS[flyingEgg.type];
+
     flyingEgg.x += flyingEgg.vx;
     flyingEgg.y += flyingEgg.vy;
     flyingEgg.z += flyingEgg.vz;
-    flyingEgg.vy += C.gravity; 
+    flyingEgg.vy += w.gravity; 
 
     if (flyingEgg.z > 2500 || flyingEgg.y > 2000) { 
         if(flyingEgg) { streak = 0; updateUI(); }
@@ -225,6 +276,7 @@ function checkHit() {
     const screenY = (flyingEgg.y - window.innerHeight/2) * scale + window.innerHeight/2;
     const sx = canvas.width / video.videoWidth;
     const sy = canvas.height / video.videoHeight;
+    const wInfo = WEAPONS[flyingEgg.type];
 
     let hit = false;
     for (let i = activeTargets.length - 1; i >= 0; i--) {
@@ -235,17 +287,21 @@ function checkHit() {
         let th = t.bbox[3] * sy;
 
         if (screenX > tx && screenX < tx + tw && screenY > ty && screenY < ty + th) {
-            let damage = 10;
+            
+            let damage = wInfo.damage;
             let isHeadshot = (screenY < ty + (th * 0.25)); 
-            if (isHeadshot) damage = 25;
+            if (isHeadshot) damage *= 2; // Crit multiplier
 
-            createExplosion(screenX, screenY, scale); 
-            shake = 15; 
+            createExplosion(screenX, screenY, scale, wInfo.id); 
+            shake = wInfo.id === 'anvil' ? 40 : 15; 
 
             if (t.hp > 0) {
                 t.hp -= damage;
                 score += damage;
+                checkUnlocks(); // Check if we unlocked new guns
+                
                 createPopup(screenX, screenY, `-${damage}`, isHeadshot);
+                
                 if (t.hp <= 0) {
                     t.hp = 0;
                     createPopup(screenX, screenY - 80, "KO!", true);
@@ -257,7 +313,6 @@ function checkHit() {
             } else {
                 score += 5;
                 createPopup(screenX, screenY, "OVERKILL", false);
-                shake = 5; 
             }
             document.getElementById('score').innerText = score;
             updateUI();
@@ -292,14 +347,12 @@ function loop() {
 
     drawTargets();
 
-    // Particles
     for (let p of particles) {
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
         ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fill();
     }
     ctx.globalAlpha = 1.0;
 
-    // Slingshot
     let apexX, apexY;
     if (dragging && !flyingEgg) {
         apexX = dragPos.x;
@@ -309,23 +362,24 @@ function loop() {
         apexY = (canvas.height * C.anchorYRatio) + 160; 
     }
 
+    const w = WEAPONS[currentWeapon];
+
     if (!flyingEgg || (flyingEgg && flyingEgg.z > 50)) {
          drawBands(apexX, apexY);
     }
 
     if (!flyingEgg) {
         drawPouch(apexX, apexY);
-        drawEgg(apexX, apexY, 1.0);
+        drawProjectile(apexX, apexY, 1.0, w.id);
     } else {
         const scale = C.focalLength / (C.focalLength + flyingEgg.z);
         const cx = window.innerWidth / 2;
         const cy = window.innerHeight / 2;
         const sx = (flyingEgg.x - cx) * scale + cx;
         const sy = (flyingEgg.y - cy) * scale + cy;
-        drawEgg(sx, sy, scale);
+        drawProjectile(sx, sy, scale, flyingEgg.type);
     }
 
-    // Popups
     ctx.textAlign = "center";
     for(let p of popups) {
         ctx.shadowColor = "black"; ctx.shadowBlur = 4;
@@ -344,6 +398,43 @@ function loop() {
 
 // --- DRAWING ---
 
+function drawProjectile(x, y, scale, type) {
+    const w = WEAPONS[type];
+    const r = 24 * scale * w.scale; 
+    if (r < 1) return;
+
+    ctx.save(); ctx.translate(x, y);
+
+    if (type === 'egg') {
+        if (scale === 1.0) { ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.beginPath(); ctx.ellipse(0, 0, r, r, 0, 0, Math.PI*2); ctx.fill(); }
+        ctx.beginPath(); ctx.ellipse(0, -2, r * 0.88, r, 0, 0, Math.PI * 2);
+        let grad = ctx.createRadialGradient(-r/3, -r/3, r/5, 0, 0, r);
+        grad.addColorStop(0, "#ffffff"); grad.addColorStop(1, "#dcdcdc");
+        ctx.fillStyle = grad; ctx.fill();
+        ctx.fillStyle = "rgba(100, 80, 70, 0.1)"; 
+        for(let i=0; i<6; i++) { ctx.beginPath(); ctx.arc((Math.random()-0.5)*r, (Math.random()-0.5)*r, scale*1.5, 0, Math.PI*2); ctx.fill(); }
+    } 
+    else if (type === 'balloon') {
+        // Blue wobble shape
+        ctx.fillStyle = "#29b6f6";
+        ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.4)"; // Shine
+        ctx.beginPath(); ctx.arc(-r*0.3, -r*0.3, r*0.2, 0, Math.PI*2); ctx.fill();
+        // Knot
+        ctx.fillStyle = "#0288d1";
+        ctx.beginPath(); ctx.moveTo(-5*scale, r); ctx.lineTo(5*scale, r); ctx.lineTo(0, r+8*scale); ctx.fill();
+    }
+    else if (type === 'anvil') {
+        // Grey block
+        ctx.fillStyle = "#555";
+        ctx.fillRect(-r, -r*0.6, r*2, r*1.2);
+        ctx.fillStyle = "#333"; // Top
+        ctx.fillRect(-r*0.8, -r*0.6 - (r*0.4), r*1.6, r*0.4);
+    }
+
+    ctx.restore();
+}
+
 function drawTargets() {
     const sx = canvas.width / video.videoWidth;
     const sy = canvas.height / video.videoHeight;
@@ -352,22 +443,18 @@ function drawTargets() {
     activeTargets.forEach(t => {
         if (now - t.lastSeen > 1000) return;
         let x = t.bbox[0] * sx; let y = t.bbox[1] * sy;
-        let w = t.bbox[2] * sx; let h = t.bbox[3] * sy;
-        let cx = x + w/2; let cy = y - 50; 
+        let w = t.bbox[2] * sx; let cx = x + w/2; let cy = y - 50; 
 
         if (t.hp > 0) {
             const barWidth = Math.min(Math.max(w, 80), 180);
             const barHeight = 12;
             const barX = cx - barWidth/2;
-
             ctx.fillStyle = "rgba(0,0,0,0.6)";
             ctx.beginPath(); ctx.roundRect(barX, cy, barWidth, barHeight, 6); ctx.fill();
-
             let pct = t.hp / 100;
             let color = "#4caf50"; 
             if (pct < 0.5) color = "#ffc107"; 
             if (pct < 0.25) color = "#f44336"; 
-            
             if (pct > 0) {
                 ctx.fillStyle = color;
                 ctx.beginPath(); ctx.roundRect(barX + 2, cy + 2, (barWidth - 4) * pct, barHeight - 4, 4); ctx.fill();
@@ -384,17 +471,11 @@ function drawBands(tipX, tipY) {
     const ay = canvas.height * C.anchorYRatio; 
     const pouchWidthHalf = 25; 
     
-    // Left
-    ctx.beginPath(); 
-    ctx.moveTo(0, ay); 
-    ctx.quadraticCurveTo(w * 0.2, tipY, tipX - pouchWidthHalf, tipY);
+    ctx.beginPath(); ctx.moveTo(0, ay); ctx.quadraticCurveTo(w * 0.2, tipY, tipX - pouchWidthHalf, tipY);
     ctx.lineWidth = 14; ctx.strokeStyle = "rgba(230, 180, 120, 0.9)"; ctx.lineCap = "round"; ctx.stroke();
     ctx.lineWidth = 6; ctx.strokeStyle = "rgba(255, 230, 200, 0.4)"; ctx.stroke();
 
-    // Right
-    ctx.beginPath(); 
-    ctx.moveTo(w, ay); 
-    ctx.quadraticCurveTo(w * 0.8, tipY, tipX + pouchWidthHalf, tipY);
+    ctx.beginPath(); ctx.moveTo(w, ay); ctx.quadraticCurveTo(w * 0.8, tipY, tipX + pouchWidthHalf, tipY);
     ctx.lineWidth = 14; ctx.strokeStyle = "rgba(230, 180, 120, 0.9)"; ctx.stroke();
     ctx.lineWidth = 6; ctx.strokeStyle = "rgba(255, 230, 200, 0.4)"; ctx.stroke();
 }
@@ -402,43 +483,28 @@ function drawBands(tipX, tipY) {
 function drawPouch(x, y) {
     ctx.save(); ctx.translate(x, y);
     const rot = (x - window.innerWidth/2) * 0.0015; ctx.rotate(rot);
-    
     ctx.fillStyle = "#2d2d2d"; 
-    ctx.beginPath();
-    ctx.moveTo(-30, -20); ctx.lineTo(30, -20); ctx.lineTo(25, 25); ctx.lineTo(-25, 25); ctx.closePath();
-    ctx.fill();
-    
+    ctx.beginPath(); ctx.moveTo(-30, -20); ctx.lineTo(30, -20); ctx.lineTo(25, 25); ctx.lineTo(-25, 25); ctx.closePath(); ctx.fill();
     ctx.strokeStyle = "#111"; ctx.lineWidth = 2; ctx.stroke();
     ctx.strokeStyle = "#555"; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
     ctx.beginPath(); ctx.moveTo(-25, -15); ctx.lineTo(25, -15); ctx.lineTo(20, 20); ctx.lineTo(-20, 20); ctx.closePath(); ctx.stroke();
     ctx.restore();
 }
 
-function drawEgg(x, y, scale) {
-    const r = 24 * scale; if (r < 1) return;
-    ctx.save(); ctx.translate(x, y);
-    if (scale === 1.0) {
-        ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.beginPath(); ctx.ellipse(0, 0, r, r, 0, 0, Math.PI*2); ctx.fill();
-    }
-    ctx.beginPath(); ctx.ellipse(0, -2, r * 0.88, r, 0, 0, Math.PI * 2);
-    let grad = ctx.createRadialGradient(-r/3, -r/3, r/5, 0, 0, r);
-    grad.addColorStop(0, "#ffffff"); grad.addColorStop(1, "#dcdcdc");
-    ctx.fillStyle = grad; ctx.fill();
-    ctx.fillStyle = "rgba(100, 80, 70, 0.1)"; 
-    for(let i=0; i<6; i++) {
-        ctx.beginPath(); ctx.arc((Math.random()-0.5)*r, (Math.random()-0.5)*r, scale*1.5, 0, Math.PI*2); ctx.fill();
-    }
-    ctx.restore();
-}
+function createExplosion(x, y, scale, type) {
+    let color1 = '#ffeb3b'; // Egg yellow
+    let color2 = '#ffffff';
+    
+    if (type === 'balloon') { color1 = '#0288d1'; color2 = '#81d4fa'; } // Water blue
+    if (type === 'anvil') { color1 = '#424242'; color2 = '#9e9e9e'; } // Dust grey
 
-function createExplosion(x, y, scale) {
     for(let i=0; i<30; i++) {
         particles.push({
             x: x, y: y,
             vx: (Math.random()-0.5) * 35 * scale,
             vy: (Math.random()-0.5) * 35 * scale,
             life: 1.0,
-            color: Math.random() > 0.4 ? '#ffeb3b' : '#ffffff',
+            color: Math.random() > 0.4 ? color1 : color2,
             r: (Math.random() * 8 + 3) * scale
         });
     }
