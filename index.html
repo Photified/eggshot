@@ -38,6 +38,40 @@
         .score-label { font-size: 10px; color: #aaa; font-weight: 700; text-transform: uppercase; }
         .score-val { font-size: 32px; font-weight: 800; line-height: 1; margin-top: 2px; }
 
+        /* Settings Icon */
+        #settings-trigger {
+            background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
+            width: 44px; height: 44px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px; color: white; pointer-events: auto; cursor: pointer;
+        }
+
+        /* Settings Modal */
+        #settings-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(10px);
+            display: none; align-items: center; justify-content: center; z-index: 100;
+        }
+
+        .modal-content {
+            background: rgba(20, 20, 20, 0.95); width: 80%; max-width: 320px;
+            padding: 24px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.15);
+            text-align: center; color: white; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+
+        .modal-title { font-size: 20px; font-weight: 800; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; }
+
+        .menu-btn {
+            width: 100%; padding: 14px; margin: 8px 0; border-radius: 12px;
+            background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white; font-weight: 700; font-size: 14px; text-transform: uppercase;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .menu-btn:active { transform: scale(0.96); background: rgba(255,255,255,0.15); }
+        .menu-btn.primary { background: #ffeb3b; color: #000; border: none; }
+
+        .close-btn { margin-top: 15px; color: #777; font-size: 12px; font-weight: bold; text-transform: uppercase; cursor: pointer; }
+
         .streak-badge {
             background: linear-gradient(45deg, #ff9800, #ff5722);
             padding: 5px 12px; border-radius: 20px; color: white;
@@ -47,51 +81,23 @@
 
         /* WEAPON SELECTOR */
         #weapon-bar {
-            position: absolute; 
-            top: 50%; 
-            right: 15px; 
-            transform: translateY(-50%);
-            display: flex; 
-            flex-direction: column; 
-            gap: 15px; 
-            pointer-events: auto;
+            position: absolute; top: 50%; right: 15px; transform: translateY(-50%);
+            display: flex; flex-direction: column; gap: 15px; pointer-events: auto;
         }
 
         .weapon-card {
-            width: 60px; height: 60px; 
-            background: rgba(0,0,0,0.5); 
-            border-radius: 12px;
-            border: 2px solid rgba(255,255,255,0.1); 
-            display: flex; flex-direction: column;
-            align-items: center; justify-content: center; 
-            opacity: 0.5; transition: all 0.2s;
-            position: relative;
-            overflow: hidden; 
+            width: 60px; height: 60px; background: rgba(0,0,0,0.5); border-radius: 12px;
+            border: 2px solid rgba(255,255,255,0.1); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; opacity: 0.5; transition: all 0.2s;
+            position: relative; overflow: hidden; 
         }
         
-        .weapon-card.active { 
-            border-color: #ffeb3b; 
-            opacity: 1; 
-            transform: scale(1.15); 
-            background: rgba(0,0,0,0.8); 
-            box-shadow: 0 0 15px rgba(255, 235, 59, 0.3);
-        }
-        
+        .weapon-card.active { border-color: #ffeb3b; opacity: 1; transform: scale(1.15); background: rgba(0,0,0,0.8); box-shadow: 0 0 15px rgba(255, 235, 59, 0.3); }
         .weapon-card.locked { filter: grayscale(1); opacity: 0.2; }
-        
         .weapon-icon { font-size: 24px; z-index: 2; position: relative; }
         .weapon-ammo { font-size: 11px; color: #fff; margin-top: 2px; font-weight: bold; z-index: 2; position: relative; }
         
-        /* PROGRESS FILL METER */
-        .progress-fill {
-            position: absolute;
-            bottom: 0; left: 0;
-            width: 100%;
-            height: 0%; 
-            transition: height 0.3s ease-out;
-            z-index: 1;
-        }
-        
+        .progress-fill { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; transition: height 0.3s ease-out; z-index: 1; }
         #prog-melon { background: rgba(76, 175, 80, 0.6); } 
         #prog-pie { background: rgba(238, 238, 238, 0.6); }   
 
@@ -104,17 +110,10 @@
         }
 
         #instructions {
-            position: absolute; bottom: 80px; width: 100%; text-align: center;
+            position: absolute; bottom: 40px; width: 100%; text-align: center;
             color: rgba(255, 255, 255, 0.6); font-size: 12px; letter-spacing: 3px;
             text-transform: uppercase; font-weight: 600; pointer-events: none;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.8);
-        }
-
-        #pwa-install {
-            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-            background: white; color: black; padding: 8px 20px; border-radius: 20px;
-            font-weight: bold; font-size: 14px; display: none; z-index: 100;
-            border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.3); pointer-events: auto;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.8); transition: opacity 0.5s;
         }
     </style>
     
@@ -125,7 +124,6 @@
 
     <video id="camera-feed" autoplay playsinline muted></video>
     <canvas id="game-layer"></canvas>
-    <button id="pwa-install">INSTALL APP</button>
     
     <div id="hud">
         <div class="top-bar">
@@ -133,9 +131,10 @@
                 <div class="score-label">Score</div>
                 <div class="score-val" id="score">0</div>
             </div>
-            <div class="streak-badge" id="streak-badge">COMBO x2</div>
+            <div id="settings-trigger" onclick="openSettings()">⚙️</div>
         </div>
 
+        <div class="streak-badge" id="streak-badge" style="position: absolute; top: 80px; left: 20px;">COMBO x2</div>
         <div id="unlock-msg">WEAPON UNLOCKED!</div>
 
         <div id="weapon-bar">
@@ -158,19 +157,25 @@
         <div id="instructions">Drag Down to Launch</div>
     </div>
 
+    <div id="settings-modal" onclick="closeSettings(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-title">Settings</div>
+            <button class="menu-btn primary" id="install-btn" style="display:none;" onclick="handleInstall()">Install App</button>
+            <button class="menu-btn" onclick="resetGame()">Reset Game</button>
+            <div class="close-btn" onclick="closeSettings()">Back to Game</div>
+        </div>
+    </div>
+
 <script>
-// --- PWA SERVICE WORKER REGISTRATION ---
+// --- PWA LOGIC ---
+let deferredPrompt;
+const installBtn = document.getElementById('install-btn');
+
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('SW Registered', reg))
-            .catch(err => console.log('SW Failed', err));
+        navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW registration failed:', err));
     });
 }
-
-// Handle Install Prompt
-let deferredPrompt;
-const installBtn = document.getElementById('pwa-install');
 
 window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
@@ -178,16 +183,36 @@ window.addEventListener('beforeinstallprompt', (e) => {
     installBtn.style.display = 'block';
 });
 
-installBtn.addEventListener('click', () => {
-    installBtn.style.display = 'none';
+function handleInstall() {
+    if (!deferredPrompt) return;
     deferredPrompt.prompt();
     deferredPrompt.userChoice.then((choiceResult) => {
-        if (choiceResult.outcome === 'accepted') {
-            console.log('User installed the app');
-        }
         deferredPrompt = null;
+        installBtn.style.display = 'none';
+        closeSettings();
     });
-});
+}
+
+function openSettings() { document.getElementById('settings-modal').style.display = 'flex'; }
+function closeSettings(e) { document.getElementById('settings-modal').style.display = 'none'; }
+
+function resetGame() {
+    score = 0;
+    hitsWithEgg = 0;
+    streak = 0;
+    document.getElementById('score').innerText = 0;
+    document.getElementById('prog-melon').style.height = '0%';
+    document.getElementById('prog-pie').style.height = '0%';
+    for (let key in WEAPONS) {
+        if(key !== 'egg') {
+            WEAPONS[key].ammo = 0;
+            WEAPONS[key].unlockedFlag = false;
+        }
+    }
+    currentWeapon = 'egg';
+    updateWeaponUI();
+    closeSettings();
+}
 
 // --- CONFIG ---
 const C = {
@@ -219,6 +244,7 @@ let score = 0;
 let streak = 0;
 let shake = 0;
 let hitsWithEgg = 0; 
+let hasDragged = false;
 const seedOffsets = Array(10).fill(0).map(() => Math.random()); 
 
 // --- INIT ---
@@ -235,19 +261,22 @@ window.onload = async () => {
         if (y > window.innerHeight * 0.3) { 
             dragging = true; 
             dragPos = { x, y }; 
-            document.getElementById('instructions').style.opacity = 0;
+            if (!hasDragged) {
+                hasDragged = true;
+                document.getElementById('instructions').style.opacity = 0;
+            }
         }
     };
     const moveDrag = (x, y) => { if (dragging) dragPos = { x, y }; };
     const endDrag = () => { if (dragging) { dragging = false; fire(); } };
 
     canvas.addEventListener('touchstart', e => { 
-        if(e.target.closest('.weapon-card')) return;
+        if(e.target.closest('.weapon-card') || e.target.closest('#settings-trigger')) return;
         e.preventDefault(); startDrag(e.touches[0].clientX, e.touches[0].clientY); 
     }, {passive:false});
     canvas.addEventListener('touchmove', e => { e.preventDefault(); moveDrag(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
     canvas.addEventListener('touchend', e => { 
-        if(e.target.closest('.weapon-card')) return;
+        if(e.target.closest('.weapon-card') || e.target.closest('#settings-trigger')) return;
         e.preventDefault(); endDrag(); 
     }, {passive:false});
     
@@ -289,6 +318,9 @@ function updateWeaponUI() {
             el.classList.remove('locked');
             if (w.ammo === 0) el.style.opacity = 0.5; 
             else el.style.opacity = 1.0;
+        } else {
+            el.classList.add('locked');
+            el.style.opacity = 0.2;
         }
     }
 }
@@ -402,7 +434,6 @@ function checkHit() {
     const sy = canvas.height / video.videoHeight;
     const wInfo = WEAPONS[flyingEgg.type];
 
-    let hit = false;
     for (let i = activeTargets.length - 1; i >= 0; i--) {
         let t = activeTargets[i];
         let tx = t.bbox[0] * sx;
@@ -457,7 +488,6 @@ function checkHit() {
             document.getElementById('score').innerText = score;
             updateUI();
             flyingEgg = null; 
-            hit = true;
             break;
         }
     }
