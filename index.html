@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>EGGSHOT</title>
+    <title>Slingshot AR: PERFECTED</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Arial Black', sans-serif; touch-action: none; }
         
@@ -22,7 +22,7 @@
             color: #fff; text-shadow: 2px 2px 0 #000;
         }
         .score-val { font-size: 48px; color: #ffeb3b; line-height: 1; }
-        .streak-val { font-size: 20px; color: #ff5722; display: none; }
+        .streak-val { font-size: 20px; color: #ff5722; display: none; margin-top: 5px; }
         
         #status {
             position: absolute; bottom: 80px; width: 100%; text-align: center;
@@ -44,19 +44,19 @@
             <div class="score-val" id="score">0</div>
             <div class="streak-val" id="streak">STREAK x1</div>
         </div>
-        <div id="status">Drag Down to Lob</div>
+        <div id="status">Drag Down to Shoot</div>
     </div>
 
 <script>
-// --- CONFIGURATION ---
+// --- PHYSICS TUNING ---
 const C = {
-    gravity: 0.45,       // Gravity
-    zSpeed: 55,          // Forward speed
-    lobPower: -12,       // AUTOMATIC UPWARD FORCE (The "Lob")
-    targetDist: 800,     // Distance to hit
+    gravity: 0.8,        // Stronger gravity = Better Arc (Up then Down)
+    zSpeed: 50,          // Speed into distance
+    lobPower: -4,        // Subtle pop-up (was -12, which was too much)
+    targetDist: 800,     // Distance where hits happen
     hitWindow: 200,      // Hit forgiveness
     focalLength: 850,
-    anchorYRatio: 0.6    // Lower anchors slightly for better view
+    anchorYRatio: 0.6
 };
 
 // --- STATE ---
@@ -66,7 +66,7 @@ let dragPos = { x: 0, y: 0 };
 let flyingEgg = null; 
 let targets = [];
 let particles = [];
-let popups = []; // Floating text
+let popups = []; 
 let score = 0;
 let streak = 0;
 let shake = 0;
@@ -82,6 +82,7 @@ window.onload = async () => {
     // Input Handling
     const startDrag = (x, y) => {
         if (flyingEgg) return;
+        // Only allow drag in bottom half
         if (y > window.innerHeight * 0.4) { dragging = true; dragPos = { x, y }; }
     };
     const moveDrag = (x, y) => { if (dragging) dragPos = { x, y }; };
@@ -112,17 +113,18 @@ function fire() {
     let dx = cx - dragPos.x;
     let dy = anchorY - dragPos.y; 
     
-    // THE LOB CALCULATION
-    // We take the user's vertical pull (dy) and divide it to reduce influence
-    // Then we add a constant negative Y velocity (C.lobPower) to force it up
-    let launchVy = (dy * 0.1) + C.lobPower; 
+    // PHYSICS CALCULATION
+    // dy is negative (because we pull down). 
+    // We multiply by 0.12 to damp it (so you have to pull hard to get height)
+    // We add lobPower (-4) to ensure it clears the pouch
+    let launchVy = (dy * 0.12) + C.lobPower; 
 
     flyingEgg = {
         x: cx,          
-        y: anchorY + 80, 
+        y: anchorY + 100, // Spawn slightly below bands
         z: 0,           
         vx: dx * 0.15,    
-        vy: launchVy,     // Use the Lob
+        vy: launchVy,     
         vz: C.zSpeed      
     };
     shake = 8; 
@@ -136,23 +138,25 @@ function update() {
         if(p.life <= 0) particles.splice(i,1);
     }
     
-    // Popups (Floating Text)
+    // Popups
     for(let i=popups.length-1; i>=0; i--) {
         let p = popups[i];
-        p.y -= 2; // Float up
+        p.y -= 2; 
         p.life -= 0.02;
         if(p.life <= 0) popups.splice(i,1);
     }
 
     if (!flyingEgg) return;
 
-    // Physics
+    // Egg Physics
     flyingEgg.x += flyingEgg.vx;
     flyingEgg.y += flyingEgg.vy;
     flyingEgg.z += flyingEgg.vz;
-    flyingEgg.vy += C.gravity; // Gravity pulls the lob down
+    
+    // Apply Gravity (This pulls the lob down)
+    flyingEgg.vy += C.gravity; 
 
-    // Kill if too far
+    // Kill if off screen / too far
     if (flyingEgg.z > 2500 || flyingEgg.y > 2000) { 
         if(flyingEgg) {
             streak = 0; // Miss reset streak
@@ -184,8 +188,7 @@ function checkHit() {
         let th = t.bbox[3] * sy;
 
         if (screenX > tx && screenX < tx + tw && screenY > ty && screenY < ty + th) {
-            
-            // HEADSHOT CHECK (Top 20% of box)
+            // HEADSHOT (Top 20%)
             let isHeadshot = (screenY < ty + (th * 0.2));
             handleHit(screenX, screenY, scale, isHeadshot);
             hit = true;
@@ -202,7 +205,6 @@ function handleHit(x, y, scale, isHeadshot) {
     score += points;
     updateUI();
     
-    // Effects
     createExplosion(x, y, scale); 
     createPopup(x, y, `+${points}`, isHeadshot);
     shake = 20;
@@ -243,24 +245,28 @@ function loop() {
     }
     ctx.globalAlpha = 1.0;
 
-    // 2. Slingshot
+    // 2. Slingshot Logic
     let apexX, apexY;
+    
     if (dragging && !flyingEgg) {
         apexX = dragPos.x;
         apexY = dragPos.y;
     } else {
         apexX = canvas.width / 2;
-        apexY = (canvas.height * C.anchorYRatio) + 150; 
+        apexY = (canvas.height * C.anchorYRatio) + 180; // Hangs 180px below anchor
     }
 
+    // Draw Bands (Connected to Apex)
     if (!flyingEgg || (flyingEgg && flyingEgg.z > 50)) {
          drawConnectedBands(apexX, apexY);
     }
 
+    // Draw Egg/Pouch
     if (!flyingEgg) {
         drawPouch(apexX, apexY);
         drawEgg(apexX, apexY, 1.0);
     } else {
+        // Flying Egg (3D Perspective)
         const scale = C.focalLength / (C.focalLength + flyingEgg.z);
         const cx = window.innerWidth / 2;
         const cy = window.innerHeight / 2;
@@ -269,16 +275,16 @@ function loop() {
         drawEgg(sx, sy, scale);
     }
 
-    // 3. Popups (On Top)
+    // 3. Popups (Top Layer)
     ctx.textAlign = "center";
     for(let p of popups) {
+        ctx.shadowColor = "black";
+        ctx.shadowBlur = 4;
         ctx.fillStyle = p.color;
-        ctx.font = `bold ${p.size}px Arial`;
+        ctx.font = `900 ${p.size}px Arial`; 
         ctx.globalAlpha = p.life;
-        ctx.strokeStyle = 'black';
-        ctx.lineWidth = 3;
-        ctx.strokeText(p.text, p.x, p.y);
         ctx.fillText(p.text, p.x, p.y);
+        ctx.shadowBlur = 0; // Reset
     }
     ctx.globalAlpha = 1.0;
 
@@ -292,12 +298,11 @@ function createPopup(x, y, text, isHeadshot) {
         x: x, y: y - 50,
         text: isHeadshot ? "HEADSHOT!" : text,
         life: 1.0,
-        color: isHeadshot ? "#ff0000" : "#ffeb3b",
-        size: isHeadshot ? 40 : 30
+        color: isHeadshot ? "#ff1744" : "#ffeb3b",
+        size: isHeadshot ? 45 : 35
     });
-    // If headshot, add the points separately below
     if(isHeadshot) {
-        popups.push({ x: x, y: y, text: text, life: 1.0, color: "#ffeb3b", size: 30 });
+        popups.push({ x: x, y: y, text: text, life: 1.0, color: "#ffeb3b", size: 35 });
     }
 }
 
@@ -308,12 +313,14 @@ function drawConnectedBands(tipX, tipY) {
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     
+    // Left
     ctx.beginPath();
     ctx.moveTo(0, ay); 
     ctx.quadraticCurveTo(w * 0.2, tipY, tipX, tipY);
     ctx.lineWidth = 14; ctx.strokeStyle = "#3e2723"; ctx.stroke();
     ctx.lineWidth = 6; ctx.strokeStyle = "#a1887f"; ctx.stroke();
 
+    // Right
     ctx.beginPath();
     ctx.moveTo(w, ay); 
     ctx.quadraticCurveTo(w * 0.8, tipY, tipX, tipY);
@@ -335,12 +342,11 @@ function drawPouch(x, y) {
     ctx.roundRect(-30, -25, 60, 50, 8);
     ctx.fill();
     ctx.stroke();
-    
     ctx.restore();
 }
 
 function drawEgg(x, y, scale) {
-    const r = 22 * scale;
+    const r = 24 * scale;
     if (r < 1) return;
 
     ctx.beginPath();
