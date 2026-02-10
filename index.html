@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Slingshot AR: HARDCORE</title>
+    <title>EGGSHOT</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; touch-action: none; }
         
@@ -15,7 +15,6 @@
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;
         }
         
-        /* HUD LAYER */
         #hud {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;
         }
@@ -41,7 +40,7 @@
             box-shadow: 0 4px 10px rgba(255, 87, 34, 0.4); display: none; 
         }
 
-        /* WEAPON SELECTOR - RIGHT SIDE */
+        /* WEAPON SELECTOR */
         #weapon-bar {
             position: absolute; 
             top: 50%; 
@@ -62,6 +61,7 @@
             align-items: center; justify-content: center; 
             opacity: 0.5; transition: all 0.2s;
             position: relative;
+            overflow: hidden; 
         }
         
         .weapon-card.active { 
@@ -74,16 +74,29 @@
         
         .weapon-card.locked { filter: grayscale(1); opacity: 0.2; }
         
-        .weapon-icon { font-size: 24px; }
-        .weapon-ammo { font-size: 11px; color: #fff; margin-top: 2px; font-weight: bold; }
+        .weapon-icon { font-size: 24px; z-index: 2; position: relative; }
+        .weapon-ammo { font-size: 11px; color: #fff; margin-top: 2px; font-weight: bold; z-index: 2; position: relative; }
         
-        /* Ammo Count Badge */
+        /* PROGRESS FILL METER */
+        .progress-fill {
+            position: absolute;
+            bottom: 0; left: 0;
+            width: 100%;
+            height: 0%; 
+            transition: height 0.3s ease-out;
+            z-index: 1;
+        }
+        
+        #prog-balloon { background: rgba(3, 169, 244, 0.5); } 
+        #prog-anvil { background: rgba(158, 158, 158, 0.6); }   
+
         .ammo-badge {
             position: absolute; top: -5px; right: -5px;
             background: #f44336; color: white; font-size: 10px; font-weight: bold;
-            width: 20px; height: 20px; border-radius: 50%;
+            width: 25px; height: 25px; border-radius: 50%; /* Slightly bigger for double digits */
             display: flex; align-items: center; justify-content: center;
             border: 2px solid #111; opacity: 0; transition: opacity 0.3s;
+            z-index: 3;
         }
 
         #unlock-msg {
@@ -127,14 +140,16 @@
                 <div class="weapon-ammo" id="ammo-egg">∞</div>
             </div>
             <div class="weapon-card locked" id="w-balloon" onclick="selectWeapon('balloon')">
+                <div class="progress-fill" id="prog-balloon"></div>
                 <div class="weapon-icon">💧</div>
                 <div class="weapon-ammo" id="ammo-balloon">0</div>
-                <div class="ammo-badge" id="badge-balloon">+1</div>
+                <div class="ammo-badge" id="badge-balloon">+5</div>
             </div>
             <div class="weapon-card locked" id="w-anvil" onclick="selectWeapon('anvil')">
+                <div class="progress-fill" id="prog-anvil"></div>
                 <div class="weapon-icon">🧱</div>
                 <div class="weapon-ammo" id="ammo-anvil">0</div>
-                <div class="ammo-badge" id="badge-anvil">+1</div>
+                <div class="ammo-badge" id="badge-anvil">+3</div>
             </div>
         </div>
         
@@ -152,10 +167,11 @@ const C = {
 };
 
 // --- WEAPON DEFINITIONS ---
+// Damage Buffs Applied
 let WEAPONS = {
     egg:    { id: 'egg',    gravity: 0.85, damage: 15,  speed: 60, ammo: -1, unlock: 0 },
-    balloon:{ id: 'balloon',gravity: 1.2,  damage: 40,  speed: 45, ammo: 0,  unlock: 500 },
-    anvil:  { id: 'anvil',  gravity: 2.0,  damage: 100, speed: 40, ammo: 0,  unlock: 1500 }
+    balloon:{ id: 'balloon',gravity: 1.2,  damage: 60,  speed: 45, ammo: 0,  unlock: 500 },  // Buffed to 60
+    anvil:  { id: 'anvil',  gravity: 2.0,  damage: 200, speed: 40, ammo: 0,  unlock: 1500 }  // Buffed to 200 (1-Shot)
 };
 
 let currentWeapon = 'egg';
@@ -171,7 +187,7 @@ let popups = [];
 let score = 0;
 let streak = 0;
 let shake = 0;
-let hitsWithEgg = 0; // Tracks successful hits
+let hitsWithEgg = 0; 
 
 // --- INIT ---
 window.onload = async () => {
@@ -183,7 +199,7 @@ window.onload = async () => {
 
     const startDrag = (x, y) => {
         if (flyingEgg) return;
-        if (x > window.innerWidth * 0.85) return; // Right sidebar check
+        if (x > window.innerWidth * 0.85) return; 
         if (y > window.innerHeight * 0.3) { 
             dragging = true; 
             dragPos = { x, y }; 
@@ -252,16 +268,17 @@ function shakeElement(el) {
 }
 
 function checkUnlocks() {
+    // Initial Unlocks - Massive Grants
     if (score >= WEAPONS.balloon.unlock && !WEAPONS.balloon.unlockedFlag) {
         WEAPONS.balloon.unlockedFlag = true;
-        WEAPONS.balloon.ammo += 1; // Starter
-        showUnlock("WATER BALLOONS UNLOCKED!");
+        WEAPONS.balloon.ammo += 25; // Requested: 25 Balloons
+        showUnlock("25 BALLOONS UNLOCKED!");
         updateWeaponUI();
     }
     if (score >= WEAPONS.anvil.unlock && !WEAPONS.anvil.unlockedFlag) {
         WEAPONS.anvil.unlockedFlag = true;
-        WEAPONS.anvil.ammo += 1; // Starter
-        showUnlock("ANVIL UNLOCKED!");
+        WEAPONS.anvil.ammo += 5; // Requested: 5 Anvils
+        showUnlock("5 ANVILS UNLOCKED!");
         updateWeaponUI();
     }
 }
@@ -382,17 +399,25 @@ function checkHit() {
                 score += damage;
                 checkUnlocks(); 
                 
-                // --- HARDCORE FARMING LOGIC ---
+                // --- PROGRESS METER LOGIC ---
                 if (currentWeapon === 'egg') {
                     hitsWithEgg++;
-                    // Balloon Progress
-                    let bProgress = hitsWithEgg % 10;
-                    if (bProgress === 0) grantAmmo('balloon', 1);
-                    else createPopup(screenX + 60, screenY, `${bProgress}/10 💧`, false, "small");
+                    
+                    // Balloon: Every 10 hits -> +5 Ammo
+                    let bProg = (hitsWithEgg % 10) / 10;
+                    document.getElementById('prog-balloon').style.height = (bProg * 100) + '%';
+                    if (hitsWithEgg % 10 === 0) {
+                        grantAmmo('balloon', 5); // BUFFED FARMING
+                        document.getElementById('prog-balloon').style.height = '0%'; 
+                    }
 
-                    // Anvil Progress
-                    let aProgress = hitsWithEgg % 50;
-                    if (aProgress === 0) grantAmmo('anvil', 1);
+                    // Anvil: Every 50 hits -> +3 Ammo
+                    let aProg = (hitsWithEgg % 50) / 50;
+                    document.getElementById('prog-anvil').style.height = (aProg * 100) + '%';
+                    if (hitsWithEgg % 50 === 0) {
+                        grantAmmo('anvil', 3); // BUFFED FARMING
+                        document.getElementById('prog-anvil').style.height = '0%'; 
+                    }
                 }
                 
                 createPopup(screenX, screenY, `-${damage}`, isHeadshot);
