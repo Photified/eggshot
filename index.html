@@ -3,81 +3,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Slingshot AR: ULTIMATE UI</title>
+    <title>Slingshot AR: CLEAN</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', Roboto, sans-serif; touch-action: none; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; touch-action: none; }
         
         #camera-feed {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover; z-index: 1; filter: brightness(0.85) contrast(1.1);
+            object-fit: cover; z-index: 1; filter: brightness(0.9);
         }
         #game-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;
         }
         
-        /* --- NEW HUD DESIGN --- */
+        /* UI LAYER */
         #hud {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;
+            display: flex; flex-direction: column; align-items: center; justify-content: space-between;
         }
 
-        .score-card {
-            position: absolute; top: 20px; left: 20px;
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(5px);
-            padding: 10px 25px;
-            border-radius: 12px;
-            border-left: 6px solid #ffeb3b;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            transition: transform 0.1s;
+        /* Top Bar */
+        .top-bar {
+            width: 100%;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            box-sizing: border-box;
         }
 
-        .label {
-            font-size: 12px;
-            color: #bbb;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            font-weight: 700;
-        }
-
-        .score-val {
-            font-size: 42px;
-            font-weight: 900;
-            color: #fff;
-            line-height: 1;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-        }
-
-        /* Streak Badge (Hidden by default) */
-        #streak-container {
-            position: absolute; top: 25px; left: 160px; /* Right of score */
-            display: none;
-            text-align: center;
-            transform-origin: center;
-            animation: pulse 0.5s infinite alternate;
-        }
-        
-        .streak-badge {
-            background: linear-gradient(135deg, #ff5722, #f44336);
+        .score-container {
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(8px);
+            padding: 8px 16px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
             color: white;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-weight: 900;
-            font-size: 18px;
-            box-shadow: 0 0 15px #ff5722;
-            border: 2px solid #fff;
-            transform: rotate(-5deg);
+            text-align: left;
         }
 
-        @keyframes pulse {
-            from { transform: scale(1); }
-            to { transform: scale(1.1); }
+        .score-label { font-size: 10px; color: #aaa; letter-spacing: 1px; font-weight: 700; text-transform: uppercase; }
+        .score-val { font-size: 32px; font-weight: 800; line-height: 1; margin-top: 2px; }
+
+        /* Streak Badge */
+        .streak-badge {
+            background: linear-gradient(45deg, #ff9800, #ff5722);
+            padding: 5px 12px;
+            border-radius: 20px;
+            color: white;
+            font-weight: 900;
+            font-size: 14px;
+            transform: rotate(-3deg);
+            box-shadow: 0 4px 10px rgba(255, 87, 34, 0.4);
+            display: none; /* Hidden by default */
+        }
+
+        /* Instructions - Centered slightly below top */
+        #instructions {
+            margin-top: 100px; /* Push down from top */
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-weight: 600;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            animation: pulse 2s infinite;
+            transition: opacity 0.3s;
         }
         
-        #status {
-            position: absolute; bottom: 100px; width: 100%; text-align: center;
-            color: rgba(255,255,255,0.7); font-size: 14px; text-transform: uppercase; letter-spacing: 3px;
-            font-weight: 600;
-        }
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
     </style>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
@@ -89,20 +82,19 @@
     <canvas id="game-layer"></canvas>
     
     <div id="hud">
-        <div class="score-card" id="score-box">
-            <div class="label">Total Score</div>
-            <div class="score-val" id="score">0</div>
+        <div class="top-bar">
+            <div class="score-container">
+                <div class="score-label">Score</div>
+                <div class="score-val" id="score">0</div>
+            </div>
+            <div class="streak-badge" id="streak-badge">COMBO x2</div>
         </div>
         
-        <div id="streak-container">
-            <div class="streak-badge" id="streak-txt">🔥 5X COMBO</div>
-        </div>
-
-        <div id="status">Drag Down to Launch</div>
-    </div>
+        <div id="instructions">Pull & Release</div>
+        <div style="flex-grow: 1;"></div> </div>
 
 <script>
-// --- CONFIGURATION ---
+// --- CONFIG ---
 const C = {
     gravity: 0.85,
     zSpeed: 60,
@@ -110,7 +102,7 @@ const C = {
     targetDist: 800,
     hitWindow: 200,
     focalLength: 900,
-    anchorYRatio: 0.65 
+    anchorYRatio: 0.60  // Where the bands connect to screen edge
 };
 
 // --- STATE ---
@@ -133,18 +125,29 @@ window.onload = async () => {
     resize();
     window.addEventListener('resize', resize);
 
-    // Input Handling
+    // Input
     const startDrag = (x, y) => {
         if (flyingEgg) return;
-        if (y > window.innerHeight * 0.4) { dragging = true; dragPos = { x, y }; }
+        if (y > window.innerHeight * 0.3) { 
+            dragging = true; 
+            dragPos = { x, y }; 
+            document.getElementById('instructions').style.opacity = 0; // Hide text
+        }
     };
     const moveDrag = (x, y) => { if (dragging) dragPos = { x, y }; };
-    const endDrag = () => { if (dragging) { dragging = false; fire(); } };
+    const endDrag = () => { 
+        if (dragging) { 
+            dragging = false; 
+            fire(); 
+            // Show text again if idle for a while (optional)
+        } 
+    };
 
     canvas.addEventListener('touchstart', e => { e.preventDefault(); startDrag(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
     canvas.addEventListener('touchmove', e => { e.preventDefault(); moveDrag(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
     canvas.addEventListener('touchend', e => { e.preventDefault(); endDrag(); }, {passive:false});
     
+    // AI
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         video.srcObject = stream;
@@ -156,8 +159,7 @@ window.onload = async () => {
 
 function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 
-// --- GAME LOOP ---
-
+// --- LOGIC ---
 function fire() {
     const cx = window.innerWidth / 2;
     const anchorY = window.innerHeight * C.anchorYRatio; 
@@ -174,21 +176,21 @@ function fire() {
         vy: launchVy,     
         vz: C.zSpeed      
     };
-    shake = 12; 
+    shake = 10; 
 }
 
 function update() {
     // Particles
     for(let i=particles.length-1; i>=0; i--) {
         let p = particles[i];
-        p.x += p.vx; p.y += p.vy; p.vy += 0.5; p.life -= 0.03;
+        p.x += p.vx; p.y += p.vy; p.vy += 0.5; p.life -= 0.04;
         if(p.life <= 0) particles.splice(i,1);
     }
     
     // Popups
     for(let i=popups.length-1; i>=0; i--) {
         let p = popups[i];
-        p.y -= 3; // Rise faster
+        p.y -= 2; 
         p.life -= 0.02;
         if(p.life <= 0) popups.splice(i,1);
     }
@@ -201,10 +203,7 @@ function update() {
     flyingEgg.vy += C.gravity; 
 
     if (flyingEgg.z > 2500 || flyingEgg.y > 2000) { 
-        if(flyingEgg) {
-            streak = 0; 
-            updateUI();
-        }
+        if(flyingEgg) { streak = 0; updateUI(); }
         flyingEgg = null; 
         return; 
     }
@@ -218,55 +217,42 @@ function checkHit() {
     const scale = C.focalLength / (C.focalLength + flyingEgg.z);
     const screenX = (flyingEgg.x - window.innerWidth/2) * scale + window.innerWidth/2;
     const screenY = (flyingEgg.y - window.innerHeight/2) * scale + window.innerHeight/2;
-
     const sx = canvas.width / video.videoWidth;
     const sy = canvas.height / video.videoHeight;
 
     let hit = false;
     for (let i = activeTargets.length - 1; i >= 0; i--) {
         let t = activeTargets[i];
-        
         let tx = t.bbox[0] * sx;
         let ty = t.bbox[1] * sy;
         let tw = t.bbox[2] * sx;
         let th = t.bbox[3] * sy;
 
         if (screenX > tx && screenX < tx + tw && screenY > ty && screenY < ty + th) {
-            
-            // --- HIT LOGIC ---
             let damage = 10;
             let isHeadshot = (screenY < ty + (th * 0.25)); 
             if (isHeadshot) damage = 25;
 
             createExplosion(screenX, screenY, scale); 
-            shake = 20; // Big shake
-            
-            // Score Pop Animation
-            const scoreBox = document.getElementById('score-box');
-            scoreBox.style.transform = "scale(1.2)";
-            setTimeout(() => scoreBox.style.transform = "scale(1)", 100);
+            shake = 15; 
 
             if (t.hp > 0) {
                 t.hp -= damage;
                 score += damage;
                 createPopup(screenX, screenY, `-${damage}`, isHeadshot);
-
                 if (t.hp <= 0) {
                     t.hp = 0;
                     createPopup(screenX, screenY - 80, "KO!", true);
-                    streak++; // Kill counts as streak extension
+                    streak++; 
                     setTimeout(() => { t.hp = 100; }, 4000);
                 } else {
                     streak++;
                 }
-
             } else {
-                // OVERKILL Logic
                 score += 5;
                 createPopup(screenX, screenY, "OVERKILL", false);
                 shake = 5; 
             }
-
             document.getElementById('score').innerText = score;
             updateUI();
             flyingEgg = null; 
@@ -277,81 +263,71 @@ function checkHit() {
 }
 
 function updateUI() {
-    const sContainer = document.getElementById('streak-container');
-    const sTxt = document.getElementById('streak-txt');
-    
+    const sBadge = document.getElementById('streak-badge');
     if(streak > 1) {
-        sContainer.style.display = 'block';
-        sTxt.innerText = `🔥 ${streak}X STREAK`;
+        sBadge.style.display = 'block';
+        sBadge.innerText = `COMBO x${streak}`;
     } else {
-        sContainer.style.display = 'none';
+        sBadge.style.display = 'none';
     }
 }
 
 // --- RENDER ---
-
 function loop() {
     requestAnimationFrame(loop);
     update();
-    
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Camera Shake
     if (shake > 0) {
         let sx = (Math.random() - 0.5) * shake;
         let sy = (Math.random() - 0.5) * shake;
-        ctx.save();
-        ctx.translate(sx, sy);
-        shake *= 0.9;
+        ctx.save(); ctx.translate(sx, sy); shake *= 0.9;
     }
 
-    // 1. Draw Targets
     drawTargets();
 
-    // 2. Draw Particles
+    // Particles
     for (let p of particles) {
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
         ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fill();
     }
     ctx.globalAlpha = 1.0;
 
-    // 3. Slingshot Mechanics
+    // Slingshot
     let apexX, apexY;
     if (dragging && !flyingEgg) {
         apexX = dragPos.x;
         apexY = dragPos.y;
     } else {
         apexX = canvas.width / 2;
-        apexY = (canvas.height * C.anchorYRatio) + 180; 
+        apexY = (canvas.height * C.anchorYRatio) + 160; 
     }
 
     if (!flyingEgg || (flyingEgg && flyingEgg.z > 50)) {
-         drawAdvancedBands(apexX, apexY);
+         drawBands(apexX, apexY);
     }
 
     if (!flyingEgg) {
-        drawDetailedPouch(apexX, apexY);
-        drawRealisticEgg(apexX, apexY, 1.0);
+        drawPouch(apexX, apexY);
+        drawEgg(apexX, apexY, 1.0);
     } else {
         const scale = C.focalLength / (C.focalLength + flyingEgg.z);
         const cx = window.innerWidth / 2;
         const cy = window.innerHeight / 2;
         const sx = (flyingEgg.x - cx) * scale + cx;
         const sy = (flyingEgg.y - cy) * scale + cy;
-        drawRealisticEgg(sx, sy, scale);
+        drawEgg(sx, sy, scale);
     }
 
-    // 4. Floating Popups
+    // Popups
     ctx.textAlign = "center";
     for(let p of popups) {
         ctx.shadowColor = "black"; ctx.shadowBlur = 4;
         ctx.fillStyle = p.color;
-        // Dynamic font size
-        ctx.font = `900 ${p.size}px 'Arial Black'`; 
+        ctx.font = `900 ${p.size}px 'Segoe UI'`; 
         ctx.globalAlpha = p.life;
         ctx.fillText(p.text, p.x, p.y);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = "black";
+        ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,0.5)";
         ctx.strokeText(p.text, p.x, p.y);
         ctx.shadowBlur = 0;
     }
@@ -360,7 +336,7 @@ function loop() {
     if (shake > 0) ctx.restore();
 }
 
-// --- ADVANCED DRAWING (No Images Required) ---
+// --- DRAWING ---
 
 function drawTargets() {
     const sx = canvas.width / video.videoWidth;
@@ -369,126 +345,126 @@ function drawTargets() {
 
     activeTargets.forEach(t => {
         if (now - t.lastSeen > 1000) return;
-
-        let x = t.bbox[0] * sx;
-        let y = t.bbox[1] * sy;
-        let w = t.bbox[2] * sx;
-        let h = t.bbox[3] * sy;
-        let cx = x + w/2;
-        let cy = y - 50; 
+        let x = t.bbox[0] * sx; let y = t.bbox[1] * sy;
+        let w = t.bbox[2] * sx; let h = t.bbox[3] * sy;
+        let cx = x + w/2; let cy = y - 50; 
 
         if (t.hp > 0) {
-            // FIXED: Clamp health bar width
-            const barWidth = Math.min(Math.max(w, 80), 200); // Min 80px, Max 200px
-            const barHeight = 16;
+            const barWidth = Math.min(Math.max(w, 80), 180);
+            const barHeight = 12;
             const barX = cx - barWidth/2;
 
-            // Bar Container
-            ctx.fillStyle = "#222";
-            ctx.beginPath();
-            ctx.roundRect(barX, cy, barWidth, barHeight, 4);
-            ctx.fill();
-            ctx.strokeStyle = "#fff";
-            ctx.lineWidth = 2;
-            ctx.stroke();
+            // Bar BG
+            ctx.fillStyle = "rgba(0,0,0,0.6)";
+            ctx.beginPath(); ctx.roundRect(barX, cy, barWidth, barHeight, 6); ctx.fill();
 
-            // HP Fill
+            // Bar Fill
             let pct = t.hp / 100;
-            let color = "#4caf50"; // Nice Green
-            if (pct < 0.5) color = "#ffc107"; // Amber
-            if (pct < 0.25) color = "#f44336"; // Red
+            let color = "#4caf50"; 
+            if (pct < 0.5) color = "#ffc107"; 
+            if (pct < 0.25) color = "#f44336"; 
             
             if (pct > 0) {
                 ctx.fillStyle = color;
-                ctx.beginPath();
-                ctx.roundRect(barX + 2, cy + 2, (barWidth - 4) * pct, barHeight - 4, 2);
-                ctx.fill();
+                ctx.beginPath(); ctx.roundRect(barX + 2, cy + 2, (barWidth - 4) * pct, barHeight - 4, 4); ctx.fill();
             }
         } else {
-            // SKULL MODE
             ctx.shadowColor = "black"; ctx.shadowBlur = 10;
-            ctx.font = "80px Arial";
-            ctx.fillText("💀", cx, cy + 40);
-            ctx.shadowBlur = 0;
+            ctx.font = "80px Arial"; ctx.fillText("💀", cx, cy + 50); ctx.shadowBlur = 0;
         }
     });
 }
 
-function drawAdvancedBands(tipX, tipY) {
+function drawBands(tipX, tipY) {
     const w = canvas.width;
     const ay = canvas.height * C.anchorYRatio; 
     
-    // Draw twice: once for shadow/outline, once for core
-    // 1. Dark Outline (Thick)
-    ctx.lineCap = "round"; ctx.lineJoin = "round";
-    ctx.beginPath(); 
-    ctx.moveTo(0, ay); ctx.quadraticCurveTo(w * 0.2, tipY, tipX, tipY);
-    ctx.moveTo(w, ay); ctx.quadraticCurveTo(w * 0.8, tipY, tipX, tipY);
-    ctx.lineWidth = 18; ctx.strokeStyle = "#1a1a1a"; ctx.stroke();
-
-    // 2. Rubber Core (Color)
-    ctx.beginPath(); 
-    ctx.moveTo(0, ay); ctx.quadraticCurveTo(w * 0.2, tipY, tipX, tipY);
-    ctx.moveTo(w, ay); ctx.quadraticCurveTo(w * 0.8, tipY, tipX, tipY);
-    ctx.lineWidth = 10; ctx.strokeStyle = "#ffb74d"; ctx.stroke(); // Orange latex look
+    // Connect to SIDES of the pouch, not center
+    // Assuming pouch is ~60px wide, offsets are -30 and +30
+    const pouchWidthHalf = 25; 
     
-    // 3. Highlight (Thin center)
+    // Left Band
     ctx.beginPath(); 
-    ctx.moveTo(0, ay); ctx.quadraticCurveTo(w * 0.2, tipY, tipX, tipY);
-    ctx.moveTo(w, ay); ctx.quadraticCurveTo(w * 0.8, tipY, tipX, tipY);
-    ctx.lineWidth = 4; ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.stroke();
+    ctx.moveTo(0, ay); 
+    // Control point creates the tension curve
+    ctx.quadraticCurveTo(w * 0.2, tipY, tipX - pouchWidthHalf, tipY);
+    
+    // Styling: "Surgical Tubing" look (Amber/Translucent)
+    ctx.lineWidth = 14; 
+    ctx.strokeStyle = "rgba(230, 180, 120, 0.9)"; // Base amber
+    ctx.lineCap = "round";
+    ctx.stroke();
+    
+    // Inner highlight for tubing roundness
+    ctx.lineWidth = 6; 
+    ctx.strokeStyle = "rgba(255, 230, 200, 0.4)"; 
+    ctx.stroke();
+
+    // Right Band
+    ctx.beginPath(); 
+    ctx.moveTo(w, ay); 
+    ctx.quadraticCurveTo(w * 0.8, tipY, tipX + pouchWidthHalf, tipY);
+    
+    ctx.lineWidth = 14; 
+    ctx.strokeStyle = "rgba(230, 180, 120, 0.9)"; 
+    ctx.stroke();
+    ctx.lineWidth = 6; 
+    ctx.strokeStyle = "rgba(255, 230, 200, 0.4)"; 
+    ctx.stroke();
 }
 
-function drawDetailedPouch(x, y) {
+function drawPouch(x, y) {
     ctx.save(); ctx.translate(x, y);
-    const rot = (x - window.innerWidth/2) * 0.001; ctx.rotate(rot);
+    const rot = (x - window.innerWidth/2) * 0.0015; ctx.rotate(rot);
     
-    // Leather Patch
-    ctx.fillStyle = "#5d4037"; // Brown Leather
-    ctx.beginPath(); ctx.roundRect(-35, -28, 70, 56, 10); ctx.fill();
+    // Trapezoid shape for perspective
+    ctx.fillStyle = "#2d2d2d"; // Dark tactical leather
+    ctx.beginPath();
+    ctx.moveTo(-30, -20); // Top Left
+    ctx.lineTo(30, -20);  // Top Right
+    ctx.lineTo(25, 25);   // Bottom Right
+    ctx.lineTo(-25, 25);  // Bottom Left
+    ctx.closePath();
+    ctx.fill();
     
     // Border
-    ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 3; ctx.stroke();
+    ctx.strokeStyle = "#111"; ctx.lineWidth = 2; ctx.stroke();
     
-    // Stitching Effect (Dashed Line)
-    ctx.beginPath(); ctx.roundRect(-28, -21, 56, 42, 6);
-    ctx.strokeStyle = "#d7ccc8"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]); 
+    // Stitching
+    ctx.strokeStyle = "#555"; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(-25, -15); ctx.lineTo(25, -15); ctx.lineTo(20, 20); ctx.lineTo(-20, 20); ctx.closePath();
     ctx.stroke();
     
     ctx.restore();
 }
 
-function drawRealisticEgg(x, y, scale) {
-    const r = 26 * scale; if (r < 1) return;
+function drawEgg(x, y, scale) {
+    const r = 24 * scale; if (r < 1) return;
 
-    ctx.save();
-    ctx.translate(x, y);
+    ctx.save(); ctx.translate(x, y);
 
-    // 1. Shadow (if sitting in pouch)
+    // Shadow inside pouch
     if (scale === 1.0) {
-        ctx.fillStyle = "rgba(0,0,0,0.3)";
-        ctx.beginPath(); ctx.ellipse(5, 5, r, r, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.beginPath(); ctx.ellipse(0, 0, r, r, 0, 0, Math.PI*2); ctx.fill();
     }
 
-    // 2. Base Egg Shape
-    ctx.beginPath(); ctx.ellipse(0, 0, r * 0.88, r, 0, 0, Math.PI * 2);
+    // Egg Shape
+    ctx.beginPath(); ctx.ellipse(0, -2, r * 0.88, r, 0, 0, Math.PI * 2);
     
-    // 3. Radial Gradient (Shading)
+    // Realistic Shading
     let grad = ctx.createRadialGradient(-r/3, -r/3, r/5, 0, 0, r);
-    grad.addColorStop(0, "#ffffff");      // Highlight
-    grad.addColorStop(0.5, "#f0f0f0");    // Mid
-    grad.addColorStop(1, "#d1c4e9");      // Shadow (slight purple tint for depth)
+    grad.addColorStop(0, "#ffffff");
+    grad.addColorStop(1, "#dcdcdc");
     ctx.fillStyle = grad;
     ctx.fill();
 
-    // 4. Texture (Speckles)
-    ctx.fillStyle = "rgba(160, 82, 45, 0.15)"; // Brownish speckles
-    for(let i=0; i<5; i++) {
-        let rx = (Math.random()-0.5) * r;
-        let ry = (Math.random()-0.5) * r;
-        ctx.beginPath(); ctx.arc(rx, ry, scale, 0, Math.PI*2); ctx.fill();
+    // Speckles
+    ctx.fillStyle = "rgba(100, 80, 70, 0.1)"; 
+    for(let i=0; i<6; i++) {
+        ctx.beginPath(); ctx.arc((Math.random()-0.5)*r, (Math.random()-0.5)*r, scale*1.5, 0, Math.PI*2); ctx.fill();
     }
-
     ctx.restore();
 }
 
@@ -499,7 +475,7 @@ function createExplosion(x, y, scale) {
             vx: (Math.random()-0.5) * 35 * scale,
             vy: (Math.random()-0.5) * 35 * scale,
             life: 1.0,
-            color: Math.random() > 0.4 ? '#ffeb3b' : '#ffffff', // Yolk & White
+            color: Math.random() > 0.4 ? '#ffeb3b' : '#ffffff',
             r: (Math.random() * 8 + 3) * scale
         });
     }
@@ -510,7 +486,7 @@ function createPopup(x, y, text, isCrit) {
         x: x, y: y - 50,
         text: text,
         life: 1.0,
-        color: isCrit ? "#ff1744" : "#ffffff", // Red if crit, white if normal
+        color: isCrit ? "#ff5252" : "#ffffff",
         size: isCrit ? 50 : 35
     });
 }
