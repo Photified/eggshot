@@ -10,7 +10,7 @@
     <meta name="theme-color" content="#000000">
     
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; touch-action: none; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; touch-action: none; user-select: none; }
         
         #camera-feed {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -33,10 +33,31 @@
         .score-container {
             background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
             padding: 8px 16px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2);
-            color: white;
+            color: white; transition: transform 0.2s;
         }
         .score-label { font-size: 10px; color: #aaa; font-weight: 700; text-transform: uppercase; }
         .score-val { font-size: 32px; font-weight: 800; line-height: 1; margin-top: 2px; }
+        
+        /* Overdrive Visuals */
+        .score-val.overdrive { color: #ffeb3b; text-shadow: 0 0 15px #ffeb3b; }
+
+        /* Bonus Meter */
+        #meter-container {
+            position: absolute; top: 25px; left: 50%; transform: translateX(-50%);
+            width: 140px; height: 10px; background: rgba(0,0,0,0.5);
+            border-radius: 20px; border: 1px solid rgba(255,255,255,0.3); overflow: hidden;
+        }
+        #meter-fill {
+            width: 0%; height: 100%;
+            background: linear-gradient(90deg, #ffeb3b, #ff9800);
+            box-shadow: 0 0 10px #ffeb3b;
+            transition: width 0.1s linear;
+        }
+        #overdrive-text {
+            position: absolute; top: 40px; left: 50%; transform: translateX(-50%);
+            color: #ffeb3b; font-size: 10px; font-weight: 900; text-transform: uppercase;
+            letter-spacing: 2px; opacity: 0; transition: opacity 0.3s;
+        }
 
         /* Settings Icon */
         #settings-trigger {
@@ -49,14 +70,14 @@
         /* Settings Modal */
         #settings-modal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(10px);
+            background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(10px);
             display: none; align-items: center; justify-content: center; z-index: 100;
         }
 
         .modal-content {
-            background: rgba(20, 20, 20, 0.95); width: 80%; max-width: 320px;
+            background: rgba(30, 30, 30, 0.95); width: 80%; max-width: 320px;
             padding: 24px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.15);
-            text-align: center; color: white; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            text-align: center; color: white; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
         }
 
         .modal-title { font-size: 20px; font-weight: 800; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; }
@@ -127,12 +148,15 @@
     
     <div id="hud">
         <div class="top-bar">
-            <div class="score-container">
+            <div class="score-container" id="score-box">
                 <div class="score-label">Score</div>
                 <div class="score-val" id="score">0</div>
             </div>
             <div id="settings-trigger" onclick="openSettings()">⚙️</div>
         </div>
+
+        <div id="meter-container"><div id="meter-fill"></div></div>
+        <div id="overdrive-text">OVERDRIVE 2X</div>
 
         <div class="streak-badge" id="streak-badge" style="position: absolute; top: 80px; left: 20px;">COMBO x2</div>
         <div id="unlock-msg">WEAPON UNLOCKED!</div>
@@ -160,6 +184,7 @@
     <div id="settings-modal" onclick="closeSettings(event)">
         <div class="modal-content" onclick="event.stopPropagation()">
             <div class="modal-title">Settings</div>
+            <button class="menu-btn" id="sound-toggle" onclick="toggleSound()">Sound: ON</button>
             <button class="menu-btn primary" id="install-btn" style="display:none;" onclick="handleInstall()">Install App</button>
             <button class="menu-btn" onclick="resetGame()">Reset Game</button>
             <div class="close-btn" onclick="closeSettings()">Back to Game</div>
@@ -167,6 +192,52 @@
     </div>
 
 <script>
+// --- AUDIO SYSTEM ---
+let audioCtx = null;
+let soundEnabled = true;
+
+function playSfx(type) {
+    if (!soundEnabled) return;
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const now = audioCtx.currentTime;
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    if (type === 'stretch') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(120, now);
+        osc.frequency.linearRampToValueAtTime(220, now + 0.2);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.2);
+        osc.start(now); osc.stop(now + 0.2);
+    } 
+    else if (type === 'fire') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.exponentialRampToValueAtTime(50, now + 0.2);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+        osc.start(now); osc.stop(now + 0.2);
+    } 
+    else if (type === 'hit') {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(100, now);
+        osc.frequency.exponentialRampToValueAtTime(20, now + 0.1);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.1);
+        osc.start(now); osc.stop(now + 0.1);
+    }
+}
+
+function toggleSound() {
+    soundEnabled = !soundEnabled;
+    document.getElementById('sound-toggle').innerText = `Sound: ${soundEnabled ? 'ON' : 'OFF'}`;
+}
+
 // --- PWA LOGIC ---
 let deferredPrompt;
 const installBtn = document.getElementById('install-btn');
@@ -197,17 +268,12 @@ function openSettings() { document.getElementById('settings-modal').style.displa
 function closeSettings(e) { document.getElementById('settings-modal').style.display = 'none'; }
 
 function resetGame() {
-    score = 0;
-    hitsWithEgg = 0;
-    streak = 0;
+    score = 0; hitsWithEgg = 0; streak = 0; bonusMeter = 0; overdrive = false;
     document.getElementById('score').innerText = 0;
     document.getElementById('prog-melon').style.height = '0%';
     document.getElementById('prog-pie').style.height = '0%';
     for (let key in WEAPONS) {
-        if(key !== 'egg') {
-            WEAPONS[key].ammo = 0;
-            WEAPONS[key].unlockedFlag = false;
-        }
+        if(key !== 'egg') { WEAPONS[key].ammo = 0; WEAPONS[key].unlockedFlag = false; }
     }
     currentWeapon = 'egg';
     updateWeaponUI();
@@ -215,15 +281,17 @@ function resetGame() {
 }
 
 // --- CONFIG ---
-const C = {
-    zSpeed: 60,
-    targetDist: 800,
-    hitWindow: 200,
-    focalLength: 900,
-    anchorYRatio: 0.65 
+const C = { zSpeed: 60, targetDist: 800, hitWindow: 200, focalLength: 900, anchorYRatio: 0.65 };
+
+// --- TARGET TYPES (New Variety) ---
+const TARGETS = {
+    'person':   { label: 'PLAYER',  color: '#f44336', hp: 100 },
+    'cup':      { label: 'BONUS',   color: '#ffeb3b', hp: 10, bonus: 50 },
+    'bottle':   { label: 'BONUS',   color: '#ffeb3b', hp: 10, bonus: 50 },
+    'backpack': { label: 'AMMO',    color: '#2196f3', hp: 30, ammoType: 'melon', amount: 5 },
+    'handbag':  { label: 'AMMO',    color: '#2196f3', hp: 30, ammoType: 'pie', amount: 3 }
 };
 
-// --- WEAPON DEFINITIONS ---
 let WEAPONS = {
     egg:    { id: 'egg',    gravity: 0.85, damage: 15,  speed: 60, ammo: -1, unlock: 0 },
     melon:  { id: 'melon',  gravity: 1.3,  damage: 60,  speed: 45, ammo: 0,  unlock: 500 }, 
@@ -240,7 +308,7 @@ let flyingEgg = null;
 let activeTargets = []; 
 let particles = [];
 let popups = []; 
-let score = 0;
+let score = 0, bonusMeter = 0, overdrive = false;
 let streak = 0;
 let shake = 0;
 let hitsWithEgg = 0; 
@@ -261,6 +329,7 @@ window.onload = async () => {
         if (y > window.innerHeight * 0.3) { 
             dragging = true; 
             dragPos = { x, y }; 
+            playSfx('stretch');
             if (!hasDragged) {
                 hasDragged = true;
                 document.getElementById('instructions').style.opacity = 0;
@@ -295,10 +364,7 @@ function resize() { canvas.width = window.innerWidth; canvas.height = window.inn
 function selectWeapon(id) {
     const w = WEAPONS[id];
     if (score >= w.unlock) {
-        if (w.ammo === 0) {
-            shakeElement(document.getElementById('w-' + id));
-            return;
-        }
+        if (w.ammo === 0) { shakeElement(document.getElementById('w-' + id)); return; }
         currentWeapon = id;
         updateWeaponUI();
     }
@@ -312,15 +378,12 @@ function updateWeaponUI() {
         let w = WEAPONS[key];
         let ammoTxt = w.ammo === -1 ? '∞' : w.ammo;
         document.getElementById('ammo-' + key).innerText = ammoTxt;
-        
         let el = document.getElementById('w-' + key);
         if (score >= w.unlock) {
             el.classList.remove('locked');
-            if (w.ammo === 0) el.style.opacity = 0.5; 
-            else el.style.opacity = 1.0;
+            if (w.ammo === 0) el.style.opacity = 0.5; else el.style.opacity = 1.0;
         } else {
-            el.classList.add('locked');
-            el.style.opacity = 0.2;
+            el.classList.add('locked'); el.style.opacity = 0.2;
         }
     }
 }
@@ -333,16 +396,12 @@ function shakeElement(el) {
 
 function checkUnlocks() {
     if (score >= WEAPONS.melon.unlock && !WEAPONS.melon.unlockedFlag) {
-        WEAPONS.melon.unlockedFlag = true;
-        WEAPONS.melon.ammo += 25; 
-        showUnlock("25 WATERMELONS UNLOCKED!");
-        updateWeaponUI();
+        WEAPONS.melon.unlockedFlag = true; WEAPONS.melon.ammo += 25; 
+        showUnlock("25 WATERMELONS UNLOCKED!"); updateWeaponUI();
     }
     if (score >= WEAPONS.pie.unlock && !WEAPONS.pie.unlockedFlag) {
-        WEAPONS.pie.unlockedFlag = true;
-        WEAPONS.pie.ammo += 5; 
-        showUnlock("5 CREAM PIES UNLOCKED!");
-        updateWeaponUI();
+        WEAPONS.pie.unlockedFlag = true; WEAPONS.pie.ammo += 5; 
+        showUnlock("5 CREAM PIES UNLOCKED!"); updateWeaponUI();
     }
 }
 
@@ -354,8 +413,7 @@ function grantAmmo(type, amount) {
 
 function showUnlock(msg) {
     const el = document.getElementById('unlock-msg');
-    el.innerText = msg;
-    el.style.opacity = 1;
+    el.innerText = msg; el.style.opacity = 1;
     el.style.transform = "translate(-50%, -50%) scale(1.1)";
     setTimeout(() => { el.style.opacity = 0; el.style.transform = "translate(-50%, -50%) scale(1)"; }, 3000);
 }
@@ -366,64 +424,57 @@ function fire() {
     const anchorY = window.innerHeight * C.anchorYRatio; 
     let dx = cx - dragPos.x;
     let dy = anchorY - dragPos.y; 
-    
     const w = WEAPONS[currentWeapon];
 
     if (w.ammo > 0) {
-        w.ammo--;
-        updateWeaponUI();
-        if (w.ammo === 0) {
-            setTimeout(() => { if(currentWeapon === w.id) currentWeapon = 'egg'; updateWeaponUI(); }, 500);
-        }
+        w.ammo--; updateWeaponUI();
+        if (w.ammo === 0) setTimeout(() => { if(currentWeapon === w.id) currentWeapon = 'egg'; updateWeaponUI(); }, 500);
     }
+    
+    playSfx('fire');
 
     let lob = -6;
     if (w.id === 'pie') lob = -12; 
     if (w.id === 'melon') lob = -9;
-
     let launchVy = (dy * 0.13) + lob; 
 
-    flyingEgg = {
-        type: w.id,
-        x: cx,          
-        y: anchorY + 120, 
-        z: 0,           
-        vx: dx * 0.16,    
-        vy: launchVy,     
-        vz: w.speed      
-    };
+    flyingEgg = { type: w.id, x: cx, y: anchorY + 120, z: 0, vx: dx * 0.16, vy: launchVy, vz: w.speed };
     shake = w.id === 'pie' ? 20 : 10; 
 }
 
 function update() {
+    // Particles
     for(let i=particles.length-1; i>=0; i--) {
-        let p = particles[i];
-        p.x += p.vx; p.y += p.vy; p.vy += 0.5; p.life -= 0.04;
+        let p = particles[i]; p.x += p.vx; p.y += p.vy; p.vy += 0.5; p.life -= 0.04;
         if(p.life <= 0) particles.splice(i,1);
     }
+    // Popups
     for(let i=popups.length-1; i>=0; i--) {
-        let p = popups[i];
-        p.y -= 2; p.life -= 0.02;
+        let p = popups[i]; p.y -= 2; p.life -= 0.02;
         if(p.life <= 0) popups.splice(i,1);
     }
+    
+    // Bonus Meter Decay
+    if (bonusMeter > 0) bonusMeter -= 0.15;
+    if (bonusMeter < 0) bonusMeter = 0;
+    if (overdrive && bonusMeter <= 0) {
+        overdrive = false;
+        document.getElementById('overdrive-text').style.opacity = 0;
+        document.getElementById('score').classList.remove('overdrive');
+    }
+    document.getElementById('meter-fill').style.width = bonusMeter + '%';
 
     if (!flyingEgg) return;
 
     const w = WEAPONS[flyingEgg.type];
-    flyingEgg.x += flyingEgg.vx;
-    flyingEgg.y += flyingEgg.vy;
-    flyingEgg.z += flyingEgg.vz;
-    flyingEgg.vy += w.gravity; 
+    flyingEgg.x += flyingEgg.vx; flyingEgg.y += flyingEgg.vy; flyingEgg.z += flyingEgg.vz; flyingEgg.vy += w.gravity; 
 
     if (flyingEgg.z > 2500 || flyingEgg.y > 2000) { 
         if(flyingEgg) { streak = 0; updateUI(); }
-        flyingEgg = null; 
-        return; 
+        flyingEgg = null; return; 
     }
 
-    if (Math.abs(flyingEgg.z - C.targetDist) < C.hitWindow) {
-        checkHit();
-    }
+    if (Math.abs(flyingEgg.z - C.targetDist) < C.hitWindow) checkHit();
 }
 
 function checkHit() {
@@ -436,18 +487,20 @@ function checkHit() {
 
     for (let i = activeTargets.length - 1; i >= 0; i--) {
         let t = activeTargets[i];
-        let tx = t.bbox[0] * sx;
-        let ty = t.bbox[1] * sy;
-        let tw = t.bbox[2] * sx;
-        let th = t.bbox[3] * sy;
+        let tx = t.bbox[0] * sx, ty = t.bbox[1] * sy, tw = t.bbox[2] * sx, th = t.bbox[3] * sy;
 
         if (screenX > tx && screenX < tx + tw && screenY > ty && screenY < ty + th) {
+            
+            // Determine Target Type & Config
+            let tType = TARGETS[t.type] || TARGETS['person'];
             
             let damage = wInfo.damage;
             let isHeadshot = (screenY < ty + (th * 0.25)); 
             if (isHeadshot) damage *= 2; 
+            if (overdrive) damage *= 2; // Overdrive Multiplier
 
             createExplosion(screenX, screenY, scale, wInfo.id); 
+            playSfx('hit');
             shake = wInfo.id === 'pie' ? 40 : 15; 
 
             if (t.hp > 0) {
@@ -455,20 +508,29 @@ function checkHit() {
                 score += damage;
                 checkUnlocks(); 
                 
+                // Bonus Meter Logic
+                bonusMeter = Math.min(100, bonusMeter + (tType.bonus || 15));
+                if (bonusMeter >= 100 && !overdrive) {
+                    overdrive = true;
+                    document.getElementById('overdrive-text').style.opacity = 1;
+                    document.getElementById('score').classList.add('overdrive');
+                }
+
+                // Progression
                 if (currentWeapon === 'egg') {
                     hitsWithEgg++;
                     let mProg = (hitsWithEgg % 10) / 10;
                     document.getElementById('prog-melon').style.height = (mProg * 100) + '%';
-                    if (hitsWithEgg % 10 === 0) {
-                        grantAmmo('melon', 5); 
-                        document.getElementById('prog-melon').style.height = '0%'; 
-                    }
+                    if (hitsWithEgg % 10 === 0) { grantAmmo('melon', 5); document.getElementById('prog-melon').style.height = '0%'; }
                     let pProg = (hitsWithEgg % 50) / 50;
                     document.getElementById('prog-pie').style.height = (pProg * 100) + '%';
-                    if (hitsWithEgg % 50 === 0) {
-                        grantAmmo('pie', 3); 
-                        document.getElementById('prog-pie').style.height = '0%'; 
-                    }
+                    if (hitsWithEgg % 50 === 0) { grantAmmo('pie', 3); document.getElementById('prog-pie').style.height = '0%'; }
+                }
+                
+                // Ammo Drops
+                if (tType.ammoType) {
+                    grantAmmo(tType.ammoType, tType.amount);
+                    createPopup(screenX, screenY-30, `+${tType.amount} ${tType.ammoType.toUpperCase()}`, true);
                 }
                 
                 createPopup(screenX, screenY, `-${damage}`, isHeadshot);
@@ -476,14 +538,10 @@ function checkHit() {
                 if (t.hp <= 0) {
                     t.hp = 0;
                     createPopup(screenX, screenY - 80, "KO!", true);
-                    streak++; 
-                    setTimeout(() => { t.hp = 100; }, 4000);
-                } else {
-                    streak++;
-                }
+                    streak++; setTimeout(() => { t.hp = 100; }, 4000);
+                } else { streak++; }
             } else {
-                score += 5;
-                createPopup(screenX, screenY, "OVERKILL", false);
+                score += 5; createPopup(screenX, screenY, "OVERKILL", false);
             }
             document.getElementById('score').innerText = score;
             updateUI();
@@ -495,12 +553,8 @@ function checkHit() {
 
 function updateUI() {
     const sBadge = document.getElementById('streak-badge');
-    if(streak > 1) {
-        sBadge.style.display = 'block';
-        sBadge.innerText = `COMBO x${streak}`;
-    } else {
-        sBadge.style.display = 'none';
-    }
+    if(streak > 1) { sBadge.style.display = 'block'; sBadge.innerText = `COMBO x${streak}`; } 
+    else { sBadge.style.display = 'none'; }
 }
 
 function loop() {
@@ -523,23 +577,15 @@ function loop() {
     ctx.globalAlpha = 1.0;
 
     let apexX, apexY;
-    if (dragging && !flyingEgg) {
-        apexX = dragPos.x;
-        apexY = dragPos.y;
-    } else {
-        apexX = canvas.width / 2;
-        apexY = (canvas.height * C.anchorYRatio) + 160; 
-    }
+    if (dragging && !flyingEgg) { apexX = dragPos.x; apexY = dragPos.y; } 
+    else { apexX = canvas.width / 2; apexY = (canvas.height * C.anchorYRatio) + 160; }
 
     const w = WEAPONS[currentWeapon];
 
-    if (!flyingEgg || (flyingEgg && flyingEgg.z > 50)) {
-         drawBands(apexX, apexY);
-    }
+    if (!flyingEgg || (flyingEgg && flyingEgg.z > 50)) { drawBands(apexX, apexY); }
 
     if (!flyingEgg) {
-        drawPouch(apexX, apexY);
-        drawProjectile(apexX, apexY, 1.0, w.id);
+        drawPouch(apexX, apexY); drawProjectile(apexX, apexY, 1.0, w.id);
     } else {
         const scale = C.focalLength / (C.focalLength + flyingEgg.z);
         const cx = window.innerWidth / 2;
@@ -586,14 +632,11 @@ function drawProjectile(x, y, scale, type) {
         grad.addColorStop(0, "#66bb6a"); grad.addColorStop(1, "#1b5e20");
         ctx.fillStyle = grad;
         ctx.beginPath(); ctx.arc(0, 0, r, 0, PI2); ctx.fill();
-        ctx.save();
-        ctx.beginPath(); ctx.arc(0,0,r,0,PI2); ctx.clip();
-        ctx.strokeStyle = "#0d3310"; 
-        ctx.lineWidth = r * 0.15;
+        ctx.save(); ctx.beginPath(); ctx.arc(0,0,r,0,PI2); ctx.clip();
+        ctx.strokeStyle = "#0d3310"; ctx.lineWidth = r * 0.15;
         for(let i=1; i<=3; i++) {
             let startX = -r + (i * r * 0.5);
-            ctx.beginPath();
-            ctx.moveTo(startX, -r);
+            ctx.beginPath(); ctx.moveTo(startX, -r);
             for(let j=0; j<=10; j++) {
                 let py = -r + (j * (r*2)/10);
                 let wobble = Math.sin(j * 1.5 + seedOffsets[i]) * (r * 0.15);
@@ -615,17 +658,12 @@ function drawProjectile(x, y, scale, type) {
         let puffR = r * 0.45;
         const puffOffsets = [[-0.5, -0.2], [0.5, -0.2], [0, -0.6], [-0.3, 0.2], [0.3, 0.2], [0, 0]];
         puffOffsets.forEach(po => {
-            ctx.beginPath(); 
-            ctx.arc(po[0]*r, po[1]*r, puffR, 0, PI2); 
-            ctx.fill();
-            ctx.fillStyle = "rgba(200,200,200,0.1)";
-            ctx.beginPath(); ctx.arc(po[0]*r, po[1]*r + 2, puffR*0.8, 0, PI2); ctx.fill();
+            ctx.beginPath(); ctx.arc(po[0]*r, po[1]*r, puffR, 0, PI2); ctx.fill();
+            ctx.fillStyle = "rgba(200,200,200,0.1)"; ctx.beginPath(); ctx.arc(po[0]*r, po[1]*r + 2, puffR*0.8, 0, PI2); ctx.fill();
             ctx.fillStyle = "#fff"; 
         });
-        ctx.fillStyle = "#d50000";
-        ctx.beginPath(); ctx.arc(0, -r*0.3, r*0.22, 0, PI2); ctx.fill();
-        ctx.fillStyle = "#fff"; 
-        ctx.beginPath(); ctx.arc(-r*0.08, -r*0.38, r*0.06, 0, PI2); ctx.fill();
+        ctx.fillStyle = "#d50000"; ctx.beginPath(); ctx.arc(0, -r*0.3, r*0.22, 0, PI2); ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(-r*0.08, -r*0.38, r*0.06, 0, PI2); ctx.fill();
     }
     ctx.restore();
 }
@@ -638,6 +676,19 @@ function drawTargets() {
         if (now - t.lastSeen > 1000) return;
         let x = t.bbox[0] * sx; let y = t.bbox[1] * sy;
         let w = t.bbox[2] * sx; let cx = x + w/2; let cy = y - 50; 
+        
+        let config = TARGETS[t.type] || TARGETS['person'];
+
+        // Reticle
+        ctx.strokeStyle = config.color; ctx.lineWidth = 3;
+        const L = 20;
+        ctx.beginPath();
+        ctx.moveTo(x, y + L); ctx.lineTo(x, y); ctx.lineTo(x + L, y); // TL
+        ctx.moveTo(x + w - L, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + L); // TR
+        ctx.moveTo(x, y + t.bbox[3]*sy - L); ctx.lineTo(x, y + t.bbox[3]*sy); ctx.lineTo(x + L, y + t.bbox[3]*sy); // BL
+        ctx.moveTo(x + w - L, y + t.bbox[3]*sy); ctx.lineTo(x + w, y + t.bbox[3]*sy); ctx.lineTo(x + w, y + t.bbox[3]*sy - L); // BR
+        ctx.stroke();
+
         if (t.hp > 0) {
             const barWidth = Math.min(Math.max(w, 80), 180);
             const barHeight = 12;
@@ -645,13 +696,12 @@ function drawTargets() {
             ctx.fillStyle = "rgba(0,0,0,0.6)";
             ctx.beginPath(); ctx.roundRect(barX, cy, barWidth, barHeight, 6); ctx.fill();
             let pct = t.hp / 100;
-            let color = "#4caf50"; 
-            if (pct < 0.5) color = "#ffc107"; 
-            if (pct < 0.25) color = "#f44336"; 
-            if (pct > 0) {
-                ctx.fillStyle = color;
-                ctx.beginPath(); ctx.roundRect(barX + 2, cy + 2, (barWidth - 4) * pct, barHeight - 4, 4); ctx.fill();
-            }
+            ctx.fillStyle = config.color;
+            ctx.beginPath(); ctx.roundRect(barX + 2, cy + 2, (barWidth - 4) * pct, barHeight - 4, 4); ctx.fill();
+            
+            // Label
+            ctx.fillStyle = "white"; ctx.font = "bold 10px sans-serif";
+            ctx.fillText(config.label, cx, cy - 8);
         } else {
             ctx.shadowColor = "black"; ctx.shadowBlur = 10;
             ctx.font = "80px Arial"; ctx.fillText("💀", cx, cy + 50); ctx.shadowBlur = 0;
@@ -714,14 +764,16 @@ async function initAI() {
     setInterval(async () => {
         if(video.readyState===4) {
             const preds = await model.detect(video);
-            updateActiveTargets(preds.filter(p => p.class === 'person'));
+            // Filter only valid targets
+            const validPreds = preds.filter(p => TARGETS[p.class]);
+            updateActiveTargets(validPreds);
         }
     }, 200);
 }
 
-function updateActiveTargets(detectedPeople) {
+function updateActiveTargets(detectedItems) {
     const now = Date.now();
-    detectedPeople.forEach(p => {
+    detectedItems.forEach(p => {
         let matched = false;
         for (let t of activeTargets) {
             let pCx = p.bbox[0] + p.bbox[2]/2;
@@ -732,7 +784,8 @@ function updateActiveTargets(detectedPeople) {
                 t.bbox = p.bbox; t.lastSeen = now; matched = true; break;
             }
         }
-        if (!matched) activeTargets.push({ bbox: p.bbox, hp: 100, lastSeen: now });
+        // Store Type
+        if (!matched) activeTargets.push({ bbox: p.bbox, hp: 100, lastSeen: now, type: p.class });
     });
     activeTargets = activeTargets.filter(t => now - t.lastSeen < 2000);
 }
