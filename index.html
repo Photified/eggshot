@@ -32,6 +32,7 @@
         .top-bar {
             position: absolute; top: 20px; left: 0; width: 100%; padding: 0 20px;
             display: flex; justify-content: space-between; align-items: flex-start; box-sizing: border-box;
+            z-index: 20; /* Ensure this is above other HUD elements */
         }
 
         .left-icons { display: flex; gap: 10px; pointer-events: auto; }
@@ -61,22 +62,29 @@
         .score-val { font-size: 22px; font-weight: 800; line-height: 1; margin-top: 2px; }
         .score-val.overdrive { color: #ffeb3b; text-shadow: 0 0 15px #ffeb3b; }
 
-        /* TIMER BTN */
+        /* TIMER BTN (UPDATED) */
         .timer-btn {
             background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
             padding: 0 12px; height: 44px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2);
             color: white; display: flex; align-items: center; justify-content: center; gap: 5px;
             cursor: pointer; transition: all 0.2s;
+            position: relative; z-index: 100; /* Force on top */
         }
+        .timer-btn:hover { transform: scale(1.05); border-color: #ffeb3b; }
         .timer-btn.active { border-color: #ff5252; color: #ff5252; background: rgba(50, 0, 0, 0.8); animation: pulse 1s infinite; }
         .timer-val { font-weight: 800; font-size: 18px; font-variant-numeric: tabular-nums; }
+        
+        .dropdown-arrow { font-size: 10px; color: #ffeb3b; margin-left: 2px; opacity: 0.8; }
+
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(255, 82, 82, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0); } }
 
-        /* OVERDRIVE METER */
+        /* OVERDRIVE METER (Moved Down to fix overlap) */
         #meter-container {
-            position: absolute; top: 30px; left: 50%; transform: translateX(-50%);
+            position: absolute; top: 85px; /* Moved down from 30px */
+            left: 50%; transform: translateX(-50%);
             width: 140px; height: 10px; background: rgba(0,0,0,0.5);
             border-radius: 20px; border: 1px solid rgba(255,255,255,0.3); overflow: hidden;
+            z-index: 5;
         }
         #meter-fill {
             width: 0%; height: 100%;
@@ -85,7 +93,8 @@
             transition: width 0.1s linear;
         }
         #overdrive-text {
-            position: absolute; top: 45px; left: 50%; transform: translateX(-50%);
+            position: absolute; top: 100px; /* Moved down to match meter */
+            left: 50%; transform: translateX(-50%);
             color: #ffeb3b; font-size: 10px; font-weight: 900; text-transform: uppercase;
             letter-spacing: 2px; opacity: 0; transition: opacity 0.3s; text-shadow: 0 2px 4px rgba(0,0,0,0.8);
         }
@@ -129,12 +138,14 @@
         }
         .menu-btn:active { transform: scale(0.96); background: rgba(255,255,255,0.15); }
         .menu-btn.primary { background: #ffeb3b; color: #000; border: none; }
+        .menu-btn.lightning { background: #FFC107; color: #000; border: none; }
+        .menu-btn.dash { background: #4CAF50; color: #fff; border: none; }
         .menu-btn.google { background: #fff; color: #333; display: flex; align-items: center; justify-content: center; gap: 10px;}
         .close-btn { margin-top: 15px; color: #777; font-size: 12px; font-weight: bold; text-transform: uppercase; cursor: pointer; }
 
         /* LEADERBOARD TABS */
-        .lb-tabs { display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 10px; }
-        .lb-tab { flex: 1; padding: 8px; font-size: 12px; font-weight: bold; color: #777; cursor: pointer; border-radius: 8px; }
+        .lb-tabs { display: flex; gap: 5px; margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        .lb-tab { flex: 1; padding: 8px 4px; font-size: 10px; font-weight: bold; color: #777; cursor: pointer; border-radius: 8px; transition: all 0.2s; }
         .lb-tab.active { background: #333; color: #ffeb3b; }
         
         .lb-list { text-align: left; margin-bottom: 15px; max-height: 200px; overflow-y: auto; }
@@ -186,9 +197,10 @@
 
             <div class="right-group">
                 <div class="stats-row">
-                    <div class="timer-btn" id="dash-btn" onclick="startDashMode()">
+                    <div class="timer-btn" id="dash-btn" onclick="openModeSelect()">
                         <span>⏱️</span>
                         <span class="timer-val" id="timer-display">60</span>
+                        <span class="dropdown-arrow">▼</span>
                     </div>
 
                     <div class="score-container" id="score-box">
@@ -234,6 +246,24 @@
         </div>
     </div>
 
+    <div id="mode-select-modal" class="modal-overlay" onclick="closeAllModals(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-title">Select Mode</div>
+            
+            <button class="menu-btn dash" onclick="startDashMode(60, 'Dash Run')">
+                <div>Dash Run 🏃‍♂️</div>
+                <div style="font-size:10px; opacity:0.8;">60 Seconds</div>
+            </button>
+            
+            <button class="menu-btn lightning" onclick="startDashMode(15, 'Lightning Round')">
+                <div>Lightning Round ⚡</div>
+                <div style="font-size:10px; opacity:0.8;">15 Seconds</div>
+            </button>
+
+            <button class="menu-btn" onclick="closeAllModals()">Cancel</button>
+        </div>
+    </div>
+
     <div id="settings-modal" class="modal-overlay" onclick="closeAllModals(event)">
         <div class="modal-content" onclick="event.stopPropagation()">
             <div id="settings-view">
@@ -248,7 +278,7 @@
             <div id="howto-view" style="display:none;">
                 <div class="modal-title">How To Play</div>
                 <div class="howto-step"><div class="step-icon">👇</div><div><strong>Aim & Fire:</strong> Drag your finger down to shoot.</div></div>
-                <div class="howto-step"><div class="step-icon">⏱️</div><div><strong>Dash Mode:</strong> Tap the Timer ⏱️ to start a 60s score attack!</div></div>
+                <div class="howto-step"><div class="step-icon">⏱️</div><div><strong>Dash Mode:</strong> Click the timer to choose 60s or 15s.</div></div>
                 <div class="howto-step"><div class="step-icon">⚡</div><div><strong>Overdrive:</strong> Fill the top bar for 2x Points.</div></div>
                 <div class="howto-step"><div class="step-icon">🍉</div><div><strong>Weapons:</strong> Score points to unlock Watermelons and Pies.</div></div>
                 <button class="menu-btn primary" onclick="hideHowTo()">Back to Settings</button>
@@ -296,8 +326,9 @@
             <div class="modal-title">Top Shooters</div>
             
             <div class="lb-tabs">
-                <div class="lb-tab active" id="tab-classic" onclick="switchLbTab('classic')">ALL TIME</div>
+                <div class="lb-tab active" id="tab-classic" onclick="switchLbTab('classic')">CLASSIC</div>
                 <div class="lb-tab" id="tab-dash" onclick="switchLbTab('dash')">DASH (60s)</div>
+                <div class="lb-tab" id="tab-lightning" onclick="switchLbTab('lightning')">⚡ 15s</div>
             </div>
 
             <div class="user-auth-area">
@@ -355,24 +386,37 @@ function closePopup() {
 }
 
 // --- DASH MODE / TIMER LOGIC ---
-let gameMode = 'classic'; // 'classic' or 'dash'
+let gameMode = 'classic'; // 'classic', 'dash', 'lightning'
 let dashTime = 60;
 let dashInterval = null;
+let activeModeName = "";
 
-function startDashMode() {
-    if (gameMode === 'dash') return; // Already running
+function openModeSelect() {
+    if(gameMode !== 'classic') {
+        // If already in a mode, ask to stop?
+        if(!confirm("Stop current timer?")) return;
+        endDashMode();
+    }
+    openModal('mode-select-modal');
+}
+
+function startDashMode(time, name) {
+    closeAllModals();
 
     // Confirm start if score > 0
     if (score > 0) {
-        if(!confirm("Start Dash Mode? Score will reset!")) return;
+        if(!confirm(`Start ${name}? Score will reset!`)) return;
     }
     
-    // Reset Game for Dash
-    gameMode = 'dash';
+    // Reset Game for Mode
+    gameMode = (time === 15) ? 'lightning' : 'dash';
+    activeModeName = name;
     score = 0;
-    dashTime = 60;
+    dashTime = time;
+    
     document.getElementById('score').innerText = 0;
     document.getElementById('dash-btn').classList.add('active');
+    document.getElementById('timer-display').innerText = dashTime;
     
     // Start Interval
     clearInterval(dashInterval);
@@ -385,20 +429,24 @@ function startDashMode() {
         }
     }, 1000);
     
-    showPopup("DASH MODE ACTIVATED!\n60 Seconds. Go!");
+    showPopup(`${name.toUpperCase()}!\n${time} Seconds. Go!`);
 }
 
 function endDashMode() {
     clearInterval(dashInterval);
+    
+    let finalScore = score;
+    let finishedMode = gameMode;
+    
     gameMode = 'classic';
     document.getElementById('dash-btn').classList.remove('active');
     document.getElementById('timer-display').innerText = "60";
     
-    showPopup("TIME'S UP!\nFinal Dash Score: " + score);
+    showPopup(`TIME'S UP!\nFinal Score: ${finalScore}`);
     
     // Auto open leaderboard to encourage submit
     setTimeout(() => {
-        openLeaderboard('dash'); 
+        openLeaderboard(finishedMode); 
     }, 1500);
 }
 
@@ -429,8 +477,7 @@ function updateAuthUI() {
 
 function switchLbTab(tab) {
     currentLbTab = tab;
-    document.getElementById('tab-classic').classList.remove('active');
-    document.getElementById('tab-dash').classList.remove('active');
+    document.querySelectorAll('.lb-tab').forEach(el => el.classList.remove('active'));
     document.getElementById('tab-' + tab).classList.add('active');
     loadScores();
 }
@@ -446,7 +493,14 @@ async function loadScores() {
     list.innerHTML = '<div style="color:#777; font-size:12px;">Loading scores...</div>';
     
     // Determine which field to sort by based on tab
-    const sortField = currentLbTab === 'dash' ? 'dashScore' : 'highScore';
+    // Map tabs to firebase fields:
+    // classic -> highScore
+    // dash -> dashScore
+    // lightning -> lightningScore
+    
+    let sortField = 'highScore';
+    if (currentLbTab === 'dash') sortField = 'dashScore';
+    if (currentLbTab === 'lightning') sortField = 'lightningScore';
     
     try {
         const q = await db.collection('scores')
@@ -459,7 +513,7 @@ async function loadScores() {
         let rank = 1;
         q.forEach(doc => {
             const d = doc.data();
-            let displayScore = currentLbTab === 'dash' ? d.dashScore : d.highScore;
+            let displayScore = d[sortField];
             
             list.innerHTML += `
                 <div class="lb-row">
@@ -478,22 +532,6 @@ async function loadScores() {
 async function submitHighScore() {
     if(!currentUser || !db) return;
     
-    // We save to a specific field based on the mode the score was achieved in
-    // However, for Simplicity in this UI, we usually just update the user's doc
-    // merging the new score if it's higher.
-    
-    // Since we don't know if this current score "score" came from dash or classic right now
-    // (unless we just ended dash), we have to be careful.
-    // Logic: If gameMode is Dash (or we just finished one), we submit to dashScore.
-    // If classic, we submit to highScore.
-    
-    // Simplified: Just ask user what they are submitting? No, that's bad UX.
-    // Better: We check the current 'gameMode' variable? No, because gameMode resets.
-    
-    // Robust Solution for this demo:
-    // If the user clicks "Submit" while looking at "Dash" tab, assume they want to submit to Dash?
-    // No, let's just save BOTH and update if higher.
-    
     const userRef = db.collection('scores').doc(currentUser.uid);
     
     try {
@@ -506,29 +544,23 @@ async function submitHighScore() {
             lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
         };
 
-        // If we just played Dash (we can infer this if score was generated in dash mode, but simpler logic:)
-        // We will just update the field corresponding to the active tab for now, OR better:
-        // Update whichever is higher. 
+        // Determine which score field to update based on the tab we are viewing
+        // (Assuming the user just finished a game in that mode)
+        let fieldName = 'highScore';
+        let modeDisplayName = "Classic";
         
-        if (currentLbTab === 'dash') {
-            if (!data.dashScore || score > data.dashScore) {
-                updates.dashScore = score;
-            } else {
-                showPopup("New score isn't higher than your best Dash record.");
-                return;
-            }
+        if (currentLbTab === 'dash') { fieldName = 'dashScore'; modeDisplayName = "Dash"; }
+        if (currentLbTab === 'lightning') { fieldName = 'lightningScore'; modeDisplayName = "Lightning"; }
+
+        if (!data[fieldName] || score > data[fieldName]) {
+            updates[fieldName] = score;
+            await userRef.set(updates, { merge: true });
+            showPopup(`${modeDisplayName} Score Submitted!`);
+            loadScores(); // Refresh list
         } else {
-            if (!data.highScore || score > data.highScore) {
-                updates.highScore = score;
-            } else {
-                showPopup("New score isn't higher than your best All Time record.");
-                return;
-            }
+            showPopup(`New score isn't higher than your best ${modeDisplayName} record.`);
         }
         
-        await userRef.set(updates, { merge: true });
-        showPopup("Score Submitted!");
-        loadScores(); // Refresh list
     } catch(e) {
         showPopup("Error: " + e.message);
     }
