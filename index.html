@@ -28,62 +28,68 @@
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;
         }
 
-        /* --- TOP BAR LAYOUT --- */
-        .top-bar {
-            position: absolute; top: 20px; left: 0; width: 100%; padding: 0 20px;
-            display: flex; justify-content: space-between; align-items: flex-start; box-sizing: border-box;
-            z-index: 20; /* Ensure this is above other HUD elements */
+        /* --- NEW UNIFIED TOP BAR GRID --- */
+        .top-bar-grid {
+            position: absolute; top: 15px; left: 10px; right: 10px;
+            display: grid;
+            grid-template-columns: repeat(5, 1fr); /* 5 Equal Columns */
+            gap: 8px;
+            pointer-events: auto;
+            z-index: 20;
         }
 
-        .left-icons { display: flex; gap: 10px; pointer-events: auto; }
+        .hud-box {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 12px;
+            height: 55px; /* Fixed uniform height */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            cursor: pointer;
+            transition: transform 0.1s, background 0.2s;
+        }
         
-        .right-group { 
-            display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: auto; 
+        .hud-box:active { transform: scale(0.95); background: rgba(255,255,255,0.1); }
+
+        .hud-icon { font-size: 20px; line-height: 1; margin-bottom: 2px; }
+        .hud-val { font-size: 18px; font-weight: 800; line-height: 1; margin-bottom: 2px; }
+        .hud-label { font-size: 8px; font-weight: 700; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* SPECIAL STYLING FOR SCORE (Middle Box) */
+        .hud-box.score-highlight {
+            border: 2px solid rgba(255, 235, 59, 0.6);
+            background: rgba(20, 20, 20, 0.8);
+            box-shadow: 0 0 15px rgba(255, 235, 59, 0.1);
+            z-index: 2;
         }
-        
-        .stats-row { display: flex; gap: 8px; align-items: center; }
-
-        .icon-btn {
-            background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
-            width: 44px; height: 44px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 20px; color: white; cursor: pointer; transition: transform 0.1s;
+        .hud-box.score-highlight .hud-val {
+            font-size: 24px; /* Bigger */
+            color: #ffeb3b;
+            text-shadow: 0 0 10px rgba(255, 235, 59, 0.5);
         }
-        .icon-btn:active { transform: scale(0.9); background: rgba(255,255,255,0.2); }
+        .hud-box.score-highlight .hud-label { color: #ffeb3b; opacity: 0.8; }
 
-        /* SCORE BOX */
-        .score-container {
-            background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
-            padding: 8px 16px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2);
-            color: white; text-align: center; min-width: 60px; height: 44px; 
-            display: flex; flex-direction: column; justify-content: center;
+        /* Timer Active State */
+        .hud-box.timer-active {
+            border-color: #ff5252;
+            color: #ff5252;
+            animation: pulse-border 1s infinite;
         }
-        .score-label { font-size: 8px; color: #aaa; font-weight: 700; text-transform: uppercase; }
-        .score-val { font-size: 22px; font-weight: 800; line-height: 1; margin-top: 2px; }
-        .score-val.overdrive { color: #ffeb3b; text-shadow: 0 0 15px #ffeb3b; }
 
-        /* TIMER BTN (UPDATED) */
-        .timer-btn {
-            background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
-            padding: 0 12px; height: 44px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2);
-            color: white; display: flex; align-items: center; justify-content: center; gap: 5px;
-            cursor: pointer; transition: all 0.2s;
-            position: relative; z-index: 100; /* Force on top */
-        }
-        .timer-btn:hover { transform: scale(1.05); border-color: #ffeb3b; }
-        .timer-btn.active { border-color: #ff5252; color: #ff5252; background: rgba(50, 0, 0, 0.8); animation: pulse 1s infinite; }
-        .timer-val { font-weight: 800; font-size: 18px; font-variant-numeric: tabular-nums; }
-        
-        .dropdown-arrow { font-size: 10px; color: #ffeb3b; margin-left: 2px; opacity: 0.8; }
+        @keyframes pulse-border { 0% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0.4); } 100% { box-shadow: 0 0 0 8px rgba(255, 82, 82, 0); } }
 
-        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(255, 82, 82, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0); } }
-
-        /* OVERDRIVE METER (Moved Down to fix overlap) */
+        /* OVERDRIVE METER (Positioned Under the Grid) */
         #meter-container {
-            position: absolute; top: 85px; /* Moved down from 30px */
+            position: absolute; 
+            top: 85px; /* Directly under the 55px boxes + margin */
             left: 50%; transform: translateX(-50%);
-            width: 140px; height: 10px; background: rgba(0,0,0,0.5);
-            border-radius: 20px; border: 1px solid rgba(255,255,255,0.3); overflow: hidden;
+            width: 80%; max-width: 300px; /* Wider to match grid width */
+            height: 8px; background: rgba(0,0,0,0.6);
+            border-radius: 4px; border: 1px solid rgba(255,255,255,0.1); overflow: hidden;
             z-index: 5;
         }
         #meter-fill {
@@ -93,7 +99,7 @@
             transition: width 0.1s linear;
         }
         #overdrive-text {
-            position: absolute; top: 100px; /* Moved down to match meter */
+            position: absolute; top: 98px;
             left: 50%; transform: translateX(-50%);
             color: #ffeb3b; font-size: 10px; font-weight: 900; text-transform: uppercase;
             letter-spacing: 2px; opacity: 0; transition: opacity 0.3s; text-shadow: 0 2px 4px rgba(0,0,0,0.8);
@@ -123,7 +129,7 @@
             display: none; align-items: center; justify-content: center; z-index: 100;
         }
         .modal-content {
-            background: rgba(30, 30, 30, 0.95); width: 85%; max-width: 340px; max-height: 80vh;
+            background: #1a1a1a; width: 85%; max-width: 340px; max-height: 80vh;
             padding: 24px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.15);
             text-align: center; color: white; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
             overflow-y: auto; position: relative;
@@ -143,16 +149,42 @@
         .menu-btn.google { background: #fff; color: #333; display: flex; align-items: center; justify-content: center; gap: 10px;}
         .close-btn { margin-top: 15px; color: #777; font-size: 12px; font-weight: bold; text-transform: uppercase; cursor: pointer; }
 
-        /* LEADERBOARD TABS */
+        /* --- UPDATED LEADERBOARD STYLES --- */
         .lb-tabs { display: flex; gap: 5px; margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 10px; }
         .lb-tab { flex: 1; padding: 8px 4px; font-size: 10px; font-weight: bold; color: #777; cursor: pointer; border-radius: 8px; transition: all 0.2s; }
         .lb-tab.active { background: #333; color: #ffeb3b; }
         
-        .lb-list { text-align: left; margin-bottom: 15px; max-height: 200px; overflow-y: auto; }
-        .lb-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 13px; }
-        .lb-rank { color: #ffeb3b; font-weight: bold; width: 25px; }
-        .lb-name { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .lb-score { font-weight: bold; }
+        .lb-list { text-align: left; margin-bottom: 15px; max-height: 250px; overflow-y: auto; }
+        
+        /* New Banner Style Rows */
+        .lb-row { 
+            display: flex; align-items: center; 
+            padding: 10px; margin-bottom: 8px;
+            background: rgba(255,255,255,0.05); 
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.05);
+            font-size: 13px; 
+        }
+        .lb-rank { 
+            color: #ffeb3b; font-weight: 900; width: 20px; font-size: 14px; margin-right: 5px;
+        }
+        .lb-avatar-small {
+            width: 24px; height: 24px; border-radius: 50%; margin-right: 10px;
+            background: #333; object-fit: cover; border: 1px solid #555;
+        }
+        .lb-name { 
+            flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
+            font-weight: 600; color: #ddd;
+        }
+        .lb-score { 
+            font-weight: 800; font-size: 14px; color: #fff; 
+            background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 6px;
+        }
+
+        /* User Profile in Header */
+        .user-auth-area { margin-bottom: 15px; display: flex; flex-direction: column; align-items: center; }
+        #user-profile { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.1); padding: 5px 15px; border-radius: 50px; }
+        #user-avatar { width: 30px; height: 30px; border-radius: 50%; } /* Much smaller now */
 
         /* SHOP & OTHERS */
         .shop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
@@ -166,7 +198,7 @@
         .step-icon { font-size: 18px; min-width: 25px; }
 
         .streak-badge { background: linear-gradient(45deg, #ff9800, #ff5722); padding: 5px 12px; border-radius: 20px; color: white; font-weight: 900; font-size: 14px; transform: rotate(-3deg); box-shadow: 0 4px 10px rgba(255, 87, 34, 0.4); display: none; }
-        #unlock-msg { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); background: rgba(255, 235, 59, 0.95); color: black; padding: 15px 30px; border-radius: 50px; font-weight: 900; font-size: 20px; text-transform: uppercase; box-shadow: 0 0 30px rgba(255, 235, 59, 0.5); opacity: 0; pointer-events: none; transition: opacity 0.5s; text-align: center; width: 90%; }
+        #unlock-msg { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); background: rgba(255, 235, 59, 0.95); color: black; padding: 15px 30px; border-radius: 50px; font-weight: 900; font-size: 20px; text-transform: uppercase; box-shadow: 0 0 30px rgba(255, 235, 59, 0.5); opacity: 0; pointer-events: none; transition: opacity 0.5s; text-align: center; width: 90%; z-index: 100;}
         
         #weapon-bar { position: absolute; top: 50%; right: 15px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 15px; pointer-events: auto; }
         .weapon-card { width: 60px; height: 60px; background: rgba(0,0,0,0.5); border-radius: 12px; border: 2px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0.5; transition: all 0.2s; position: relative; overflow: hidden; }
@@ -189,27 +221,30 @@
     <canvas id="game-layer"></canvas>
     
     <div id="hud">
-        <div class="top-bar">
-            <div class="left-icons">
-                <div class="icon-btn" onclick="openModal('settings-modal')">⚙️</div>
-                <div class="icon-btn" onclick="openModal('shop-modal')">🛒</div>
+        <div class="top-bar-grid">
+            <div class="hud-box" onclick="openModal('settings-modal')">
+                <div class="hud-icon">⚙️</div>
+                <div class="hud-label">SET</div>
             </div>
 
-            <div class="right-group">
-                <div class="stats-row">
-                    <div class="timer-btn" id="dash-btn" onclick="openModeSelect()">
-                        <span>⏱️</span>
-                        <span class="timer-val" id="timer-display">60</span>
-                        <span class="dropdown-arrow">▼</span>
-                    </div>
+            <div class="hud-box" onclick="openModal('shop-modal')">
+                <div class="hud-icon">🛒</div>
+                <div class="hud-label">SHOP</div>
+            </div>
 
-                    <div class="score-container" id="score-box">
-                        <div class="score-label">Score</div>
-                        <div class="score-val" id="score">0</div>
-                    </div>
-                </div>
+            <div class="hud-box score-highlight">
+                <div class="hud-val" id="score">0</div>
+                <div class="hud-label">SCORE</div>
+            </div>
 
-                <div class="icon-btn" onclick="openLeaderboard('classic')">🏆</div>
+            <div class="hud-box" id="dash-btn" onclick="openModeSelect()">
+                <div class="hud-val" id="timer-display">60</div>
+                <div class="hud-label">TIME</div>
+            </div>
+
+            <div class="hud-box" onclick="openLeaderboard('classic')">
+                <div class="hud-icon">🏆</div>
+                <div class="hud-label">RANK</div>
             </div>
         </div>
 
@@ -335,7 +370,7 @@
                 <button id="login-btn" class="menu-btn google" onclick="googleLogin()">
                     <span style="font-weight:900; color:#4285F4">G</span> Login with Google
                 </button>
-                <div id="user-profile">
+                <div id="user-profile" style="display:none;">
                     <img id="user-avatar" src="" alt="">
                     <div id="user-name" style="font-size:14px; font-weight:bold;">Player</div>
                 </div>
@@ -415,7 +450,7 @@ function startDashMode(time, name) {
     dashTime = time;
     
     document.getElementById('score').innerText = 0;
-    document.getElementById('dash-btn').classList.add('active');
+    document.getElementById('dash-btn').classList.add('timer-active');
     document.getElementById('timer-display').innerText = dashTime;
     
     // Start Interval
@@ -439,7 +474,7 @@ function endDashMode() {
     let finishedMode = gameMode;
     
     gameMode = 'classic';
-    document.getElementById('dash-btn').classList.remove('active');
+    document.getElementById('dash-btn').classList.remove('timer-active');
     document.getElementById('timer-display').innerText = "60";
     
     showPopup(`TIME'S UP!\nFinal Score: ${finalScore}`);
@@ -492,21 +527,15 @@ async function loadScores() {
     const list = document.getElementById('lb-list');
     list.innerHTML = '<div style="color:#777; font-size:12px;">Loading scores...</div>';
     
-    // Determine which field to sort by based on tab
-    // Map tabs to firebase fields:
-    // classic -> highScore
-    // dash -> dashScore
-    // lightning -> lightningScore
-    
     let sortField = 'highScore';
     if (currentLbTab === 'dash') sortField = 'dashScore';
     if (currentLbTab === 'lightning') sortField = 'lightningScore';
     
     try {
         const q = await db.collection('scores')
-            .where(sortField, '>', 0) // Only get scores that exist
+            .where(sortField, '>', 0)
             .orderBy(sortField, 'desc')
-            .limit(10)
+            .limit(20)
             .get();
             
         list.innerHTML = '';
@@ -515,9 +544,13 @@ async function loadScores() {
             const d = doc.data();
             let displayScore = d[sortField];
             
+            // Use default image if photo is missing
+            let photo = d.photo || 'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg';
+            
             list.innerHTML += `
                 <div class="lb-row">
-                    <div class="lb-rank">${rank++}.</div>
+                    <div class="lb-rank">${rank++}</div>
+                    <img class="lb-avatar-small" src="${photo}" alt="p">
                     <div class="lb-name">${d.name}</div>
                     <div class="lb-score">${displayScore}</div>
                 </div>`;
@@ -544,8 +577,6 @@ async function submitHighScore() {
             lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
         };
 
-        // Determine which score field to update based on the tab we are viewing
-        // (Assuming the user just finished a game in that mode)
         let fieldName = 'highScore';
         let modeDisplayName = "Classic";
         
@@ -556,7 +587,7 @@ async function submitHighScore() {
             updates[fieldName] = score;
             await userRef.set(updates, { merge: true });
             showPopup(`${modeDisplayName} Score Submitted!`);
-            loadScores(); // Refresh list
+            loadScores(); 
         } else {
             showPopup(`New score isn't higher than your best ${modeDisplayName} record.`);
         }
@@ -662,7 +693,7 @@ function resetGame() {
     // Stop Timer
     clearInterval(dashInterval);
     gameMode = 'classic';
-    document.getElementById('dash-btn').classList.remove('active');
+    document.getElementById('dash-btn').classList.remove('timer-active');
     document.getElementById('timer-display').innerText = "60";
 
     document.getElementById('prog-melon').style.height = '0%';
@@ -736,12 +767,12 @@ window.onload = async () => {
     const endDrag = () => { if (dragging) { dragging = false; fire(); } };
 
     canvas.addEventListener('touchstart', e => { 
-        if(e.target.closest('.weapon-card') || e.target.closest('#settings-trigger')) return;
+        if(e.target.closest('.weapon-card') || e.target.closest('#settings-trigger') || e.target.closest('.top-bar-grid')) return;
         e.preventDefault(); startDrag(e.touches[0].clientX, e.touches[0].clientY); 
     }, {passive:false});
     canvas.addEventListener('touchmove', e => { e.preventDefault(); moveDrag(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
     canvas.addEventListener('touchend', e => { 
-        if(e.target.closest('.weapon-card') || e.target.closest('#settings-trigger')) return;
+        if(e.target.closest('.weapon-card') || e.target.closest('#settings-trigger') || e.target.closest('.top-bar-grid')) return;
         e.preventDefault(); endDrag(); 
     }, {passive:false});
     
@@ -856,7 +887,8 @@ function update() {
     if (overdrive && bonusMeter <= 0) {
         overdrive = false;
         document.getElementById('overdrive-text').style.opacity = 0;
-        document.getElementById('score').classList.remove('overdrive');
+        document.getElementById('score').parentNode.classList.remove('score-highlight');
+        document.getElementById('score').parentNode.classList.add('score-highlight'); // Re-trigger? No, just keep style
     }
     document.getElementById('meter-fill').style.width = bonusMeter + '%';
 
@@ -909,7 +941,6 @@ function checkHit() {
                 if (bonusMeter >= 100 && !overdrive) {
                     overdrive = true;
                     document.getElementById('overdrive-text').style.opacity = 1;
-                    document.getElementById('score').classList.add('overdrive');
                 }
 
                 // Progression (FASTER REFILLS)
