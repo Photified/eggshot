@@ -28,14 +28,18 @@
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;
         }
 
-        /* Top Bar */
+        /* --- UI LAYOUT UPDATED --- */
         .top-bar {
             position: absolute; top: 20px; left: 0; width: 100%; padding: 0 20px;
             display: flex; justify-content: space-between; align-items: flex-start; box-sizing: border-box;
         }
 
         .left-icons { display: flex; gap: 10px; pointer-events: auto; }
-        .right-icons { display: flex; gap: 10px; pointer-events: auto; }
+        
+        /* UPDATED: Right side now holds Score + Leaderboard button */
+        .right-group { 
+            display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: auto; 
+        }
 
         .icon-btn {
             background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
@@ -45,19 +49,19 @@
         }
         .icon-btn:active { transform: scale(0.9); background: rgba(255,255,255,0.2); }
 
+        /* UPDATED: Score moved to top right inside the right-group */
         .score-container {
             background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
             padding: 8px 16px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2);
-            color: white; transition: transform 0.2s;
-            position: absolute; left: 50%; transform: translateX(-50%); top: 0;
+            color: white; text-align: center; min-width: 60px;
         }
         .score-label { font-size: 10px; color: #aaa; font-weight: 700; text-transform: uppercase; }
-        .score-val { font-size: 32px; font-weight: 800; line-height: 1; margin-top: 2px; }
+        .score-val { font-size: 28px; font-weight: 800; line-height: 1; margin-top: 2px; }
         .score-val.overdrive { color: #ffeb3b; text-shadow: 0 0 15px #ffeb3b; }
 
-        /* Bonus Meter */
+        /* Bonus Meter - Centered */
         #meter-container {
-            position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
+            position: absolute; top: 30px; left: 50%; transform: translateX(-50%);
             width: 140px; height: 10px; background: rgba(0,0,0,0.5);
             border-radius: 20px; border: 1px solid rgba(255,255,255,0.3); overflow: hidden;
         }
@@ -68,12 +72,12 @@
             transition: width 0.1s linear;
         }
         #overdrive-text {
-            position: absolute; top: 75px; left: 50%; transform: translateX(-50%);
+            position: absolute; top: 45px; left: 50%; transform: translateX(-50%);
             color: #ffeb3b; font-size: 10px; font-weight: 900; text-transform: uppercase;
-            letter-spacing: 2px; opacity: 0; transition: opacity 0.3s;
+            letter-spacing: 2px; opacity: 0; transition: opacity 0.3s; text-shadow: 0 2px 4px rgba(0,0,0,0.8);
         }
 
-        /* MODALS (Shared Styles) */
+        /* MODALS */
         .modal-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(10px);
@@ -189,12 +193,11 @@
                 <div class="icon-btn" onclick="openModal('shop-modal')">🛒</div>
             </div>
 
-            <div class="score-container" id="score-box">
-                <div class="score-label">Score</div>
-                <div class="score-val" id="score">0</div>
-            </div>
-
-            <div class="right-icons">
+            <div class="right-group">
+                <div class="score-container" id="score-box">
+                    <div class="score-label">Score</div>
+                    <div class="score-val" id="score">0</div>
+                </div>
                 <div class="icon-btn" onclick="openLeaderboard()">🏆</div>
             </div>
         </div>
@@ -202,7 +205,7 @@
         <div id="meter-container"><div id="meter-fill"></div></div>
         <div id="overdrive-text">OVERDRIVE 2X</div>
 
-        <div class="streak-badge" id="streak-badge" style="position: absolute; top: 100px; left: 20px;">COMBO x2</div>
+        <div class="streak-badge" id="streak-badge" style="position: absolute; top: 120px; left: 20px;">COMBO x2</div>
         <div id="unlock-msg">WEAPON UNLOCKED!</div>
 
         <div id="weapon-bar">
@@ -308,7 +311,6 @@
 
 <script>
 // --- FIREBASE CONFIGURATION ---
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyAbBGS-VPX5Dk8w9muR8RdTWTArsur211U",
   authDomain: "eggshot-ar.firebaseapp.com",
@@ -330,14 +332,29 @@ try {
         updateAuthUI();
     });
 } catch (e) {
-    console.warn("Firebase not configured yet. Leaderboard disabled.");
+    console.warn("Firebase not configured properly.", e);
 }
 
 // --- AUTH & LEADERBOARD LOGIC ---
 function googleLogin() {
-    if(!auth) return alert("Firebase not configured!");
+    if(!auth) return alert("Firebase not initialized!");
     const provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithPopup(provider).catch(e => alert(e.message));
+    auth.signInWithPopup(provider)
+        .then((result) => {
+            // Success
+            console.log("Logged in:", result.user);
+        })
+        .catch((error) => {
+            // ERROR HANDLING for Login
+            console.error("Login Error:", error);
+            if (error.code === 'auth/unauthorized-domain') {
+                alert("Error: This domain is not authorized. Please add it in Firebase Console -> Authentication -> Settings.");
+            } else if (error.code === 'auth/operation-not-allowed') {
+                alert("Error: Google Sign-in is disabled. Enable it in Firebase Console -> Authentication -> Sign-in method.");
+            } else {
+                alert("Login Failed: " + error.message);
+            }
+        });
 }
 
 function updateAuthUI() {
@@ -374,6 +391,7 @@ async function openLeaderboard() {
                     <div class="lb-score">${d.score}</div>
                 </div>`;
         });
+        if(rank === 1) list.innerHTML = '<div style="color:#777; font-size:12px;">No scores yet. Be the first!</div>';
     } catch(e) {
         list.innerHTML = '<div style="color:red; font-size:12px;">Error loading scores. Check Console.</div>';
         console.error(e);
@@ -386,11 +404,11 @@ async function submitHighScore() {
         await db.collection('scores').doc(currentUser.uid).set({
             name: currentUser.displayName,
             photo: currentUser.photoURL,
-            score: score, // Global game score variable
+            score: score, 
             date: firebase.firestore.FieldValue.serverTimestamp()
         });
         alert("Score Submitted!");
-        openLeaderboard(); // Refresh list
+        openLeaderboard(); 
     } catch(e) {
         alert("Error submitting score: " + e.message);
     }
@@ -400,7 +418,6 @@ async function submitHighScore() {
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeAllModals() { 
     document.querySelectorAll('.modal-overlay').forEach(el => el.style.display = 'none'); 
-    // Reset views
     document.getElementById('settings-view').style.display = 'block';
     document.getElementById('howto-view').style.display = 'none';
 }
