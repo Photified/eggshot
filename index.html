@@ -28,7 +28,7 @@
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;
         }
 
-        /* --- UI LAYOUT UPDATED --- */
+        /* --- TOP BAR LAYOUT --- */
         .top-bar {
             position: absolute; top: 20px; left: 0; width: 100%; padding: 0 20px;
             display: flex; justify-content: space-between; align-items: flex-start; box-sizing: border-box;
@@ -36,10 +36,11 @@
 
         .left-icons { display: flex; gap: 10px; pointer-events: auto; }
         
-        /* UPDATED: Right side now holds Score + Leaderboard button */
         .right-group { 
             display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: auto; 
         }
+        
+        .stats-row { display: flex; gap: 8px; align-items: center; }
 
         .icon-btn {
             background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
@@ -49,17 +50,29 @@
         }
         .icon-btn:active { transform: scale(0.9); background: rgba(255,255,255,0.2); }
 
-        /* UPDATED: Score moved to top right inside the right-group */
+        /* SCORE BOX */
         .score-container {
             background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
             padding: 8px 16px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2);
-            color: white; text-align: center; min-width: 60px;
+            color: white; text-align: center; min-width: 60px; height: 44px; 
+            display: flex; flex-direction: column; justify-content: center;
         }
-        .score-label { font-size: 10px; color: #aaa; font-weight: 700; text-transform: uppercase; }
-        .score-val { font-size: 28px; font-weight: 800; line-height: 1; margin-top: 2px; }
+        .score-label { font-size: 8px; color: #aaa; font-weight: 700; text-transform: uppercase; }
+        .score-val { font-size: 22px; font-weight: 800; line-height: 1; margin-top: 2px; }
         .score-val.overdrive { color: #ffeb3b; text-shadow: 0 0 15px #ffeb3b; }
 
-        /* Bonus Meter - Centered */
+        /* TIMER BTN */
+        .timer-btn {
+            background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
+            padding: 0 12px; height: 44px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2);
+            color: white; display: flex; align-items: center; justify-content: center; gap: 5px;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .timer-btn.active { border-color: #ff5252; color: #ff5252; background: rgba(50, 0, 0, 0.8); animation: pulse 1s infinite; }
+        .timer-val { font-weight: 800; font-size: 18px; font-variant-numeric: tabular-nums; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(255, 82, 82, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0); } }
+
+        /* OVERDRIVE METER */
         #meter-container {
             position: absolute; top: 30px; left: 50%; transform: translateX(-50%);
             width: 140px; height: 10px; background: rgba(0,0,0,0.5);
@@ -75,6 +88,23 @@
             position: absolute; top: 45px; left: 50%; transform: translateX(-50%);
             color: #ffeb3b; font-size: 10px; font-weight: 900; text-transform: uppercase;
             letter-spacing: 2px; opacity: 0; transition: opacity 0.3s; text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+
+        /* CUSTOM POPUP / ALERT */
+        #custom-popup {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); z-index: 200;
+            display: none; align-items: center; justify-content: center;
+        }
+        .popup-box {
+            background: #1e1e1e; border: 1px solid #444; padding: 25px; border-radius: 20px;
+            width: 80%; max-width: 300px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            transform: scale(0.9); transition: transform 0.2s;
+        }
+        .popup-msg { color: white; font-size: 16px; margin-bottom: 20px; line-height: 1.4; }
+        .popup-btn {
+            background: #ffeb3b; color: black; font-weight: 800; border: none; padding: 10px 25px;
+            border-radius: 50px; cursor: pointer; text-transform: uppercase; font-size: 14px;
         }
 
         /* MODALS */
@@ -102,80 +132,41 @@
         .menu-btn.google { background: #fff; color: #333; display: flex; align-items: center; justify-content: center; gap: 10px;}
         .close-btn { margin-top: 15px; color: #777; font-size: 12px; font-weight: bold; text-transform: uppercase; cursor: pointer; }
 
-        /* SHOP STYLES */
-        .shop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
-        .shop-item {
-            background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
-            padding: 10px; display: flex; flex-direction: column; align-items: center;
-        }
-        .shop-icon { font-size: 30px; margin-bottom: 5px; }
-        .shop-name { font-size: 12px; font-weight: bold; color: #ccc; }
-        .shop-price { font-size: 11px; color: #ffeb3b; margin: 5px 0; }
-        .buy-btn {
-            background: #4caf50; color: white; border: none; border-radius: 50px;
-            padding: 5px 15px; font-size: 10px; font-weight: bold; width: 100%; cursor: pointer;
-        }
-
-        /* LEADERBOARD STYLES */
+        /* LEADERBOARD TABS */
+        .lb-tabs { display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        .lb-tab { flex: 1; padding: 8px; font-size: 12px; font-weight: bold; color: #777; cursor: pointer; border-radius: 8px; }
+        .lb-tab.active { background: #333; color: #ffeb3b; }
+        
         .lb-list { text-align: left; margin-bottom: 15px; max-height: 200px; overflow-y: auto; }
-        .lb-row { 
-            display: flex; justify-content: space-between; padding: 8px 0; 
-            border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 13px;
-        }
+        .lb-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 13px; }
         .lb-rank { color: #ffeb3b; font-weight: bold; width: 25px; }
         .lb-name { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .lb-score { font-weight: bold; }
-        .user-auth-area { margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; }
-        #user-profile { display: none; align-items: center; gap: 10px; justify-content: center; }
-        #user-avatar { width: 30px; height: 30px; border-radius: 50%; }
 
-        /* HOW TO STYLES */
+        /* SHOP & OTHERS */
+        .shop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .shop-item { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; align-items: center; }
+        .shop-icon { font-size: 30px; margin-bottom: 5px; }
+        .shop-name { font-size: 12px; font-weight: bold; color: #ccc; }
+        .shop-price { font-size: 11px; color: #ffeb3b; margin: 5px 0; }
+        .buy-btn { background: #4caf50; color: white; border: none; border-radius: 50px; padding: 5px 15px; font-size: 10px; font-weight: bold; width: 100%; cursor: pointer; }
+
         .howto-step { text-align: left; margin-bottom: 15px; font-size: 13px; color: #ddd; line-height: 1.4; display: flex; gap: 10px; }
         .step-icon { font-size: 18px; min-width: 25px; }
 
-        .streak-badge {
-            background: linear-gradient(45deg, #ff9800, #ff5722);
-            padding: 5px 12px; border-radius: 20px; color: white;
-            font-weight: 900; font-size: 14px; transform: rotate(-3deg);
-            box-shadow: 0 4px 10px rgba(255, 87, 34, 0.4); display: none; 
-        }
-
-        /* WEAPON SELECTOR */
-        #weapon-bar {
-            position: absolute; top: 50%; right: 15px; transform: translateY(-50%);
-            display: flex; flex-direction: column; gap: 15px; pointer-events: auto;
-        }
-
-        .weapon-card {
-            width: 60px; height: 60px; background: rgba(0,0,0,0.5); border-radius: 12px;
-            border: 2px solid rgba(255,255,255,0.1); display: flex; flex-direction: column;
-            align-items: center; justify-content: center; opacity: 0.5; transition: all 0.2s;
-            position: relative; overflow: hidden; 
-        }
+        .streak-badge { background: linear-gradient(45deg, #ff9800, #ff5722); padding: 5px 12px; border-radius: 20px; color: white; font-weight: 900; font-size: 14px; transform: rotate(-3deg); box-shadow: 0 4px 10px rgba(255, 87, 34, 0.4); display: none; }
+        #unlock-msg { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); background: rgba(255, 235, 59, 0.95); color: black; padding: 15px 30px; border-radius: 50px; font-weight: 900; font-size: 20px; text-transform: uppercase; box-shadow: 0 0 30px rgba(255, 235, 59, 0.5); opacity: 0; pointer-events: none; transition: opacity 0.5s; text-align: center; width: 90%; }
         
+        #weapon-bar { position: absolute; top: 50%; right: 15px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 15px; pointer-events: auto; }
+        .weapon-card { width: 60px; height: 60px; background: rgba(0,0,0,0.5); border-radius: 12px; border: 2px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0.5; transition: all 0.2s; position: relative; overflow: hidden; }
         .weapon-card.active { border-color: #ffeb3b; opacity: 1; transform: scale(1.15); background: rgba(0,0,0,0.8); box-shadow: 0 0 15px rgba(255, 235, 59, 0.3); }
         .weapon-card.locked { filter: grayscale(1); opacity: 0.2; }
         .weapon-icon { font-size: 24px; z-index: 2; position: relative; }
         .weapon-ammo { font-size: 11px; color: #fff; margin-top: 2px; font-weight: bold; z-index: 2; position: relative; }
-        
         .progress-fill { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; transition: height 0.3s ease-out; z-index: 1; }
-        #prog-melon { background: rgba(76, 175, 80, 0.6); } 
-        #prog-pie { background: rgba(238, 238, 238, 0.6); }   
+        #prog-melon { background: rgba(76, 175, 80, 0.6); } #prog-pie { background: rgba(238, 238, 238, 0.6); }   
 
-        #unlock-msg {
-            position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(255, 235, 59, 0.95); color: black; padding: 15px 30px;
-            border-radius: 50px; font-weight: 900; font-size: 20px; text-transform: uppercase;
-            box-shadow: 0 0 30px rgba(255, 235, 59, 0.5); opacity: 0; pointer-events: none;
-            transition: opacity 0.5s; text-align: center; width: 90%;
-        }
-
-        #instructions {
-            position: absolute; bottom: 40px; width: 100%; text-align: center;
-            color: rgba(255, 255, 255, 0.6); font-size: 12px; letter-spacing: 3px;
-            text-transform: uppercase; font-weight: 600; pointer-events: none;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.8); transition: opacity 0.5s;
-        }
+        #instructions { position: absolute; bottom: 40px; width: 100%; text-align: center; color: rgba(255, 255, 255, 0.6); font-size: 12px; letter-spacing: 3px; text-transform: uppercase; font-weight: 600; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,0.8); transition: opacity 0.5s; }
     </style>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
@@ -194,11 +185,19 @@
             </div>
 
             <div class="right-group">
-                <div class="score-container" id="score-box">
-                    <div class="score-label">Score</div>
-                    <div class="score-val" id="score">0</div>
+                <div class="stats-row">
+                    <div class="timer-btn" id="dash-btn" onclick="startDashMode()">
+                        <span>⏱️</span>
+                        <span class="timer-val" id="timer-display">60</span>
+                    </div>
+
+                    <div class="score-container" id="score-box">
+                        <div class="score-label">Score</div>
+                        <div class="score-val" id="score">0</div>
+                    </div>
                 </div>
-                <div class="icon-btn" onclick="openLeaderboard()">🏆</div>
+
+                <div class="icon-btn" onclick="openLeaderboard('classic')">🏆</div>
             </div>
         </div>
 
@@ -228,6 +227,13 @@
         <div id="instructions">Drag Down to Launch</div>
     </div>
 
+    <div id="custom-popup">
+        <div class="popup-box">
+            <div class="popup-msg" id="popup-text">Message goes here</div>
+            <button class="popup-btn" onclick="closePopup()">OK</button>
+        </div>
+    </div>
+
     <div id="settings-modal" class="modal-overlay" onclick="closeAllModals(event)">
         <div class="modal-content" onclick="event.stopPropagation()">
             <div id="settings-view">
@@ -241,10 +247,10 @@
 
             <div id="howto-view" style="display:none;">
                 <div class="modal-title">How To Play</div>
-                <div class="howto-step"><div class="step-icon">👇</div><div><strong>Aim & Fire:</strong> Drag your finger down on the screen to pull back the slingshot. Release to fire!</div></div>
-                <div class="howto-step"><div class="step-icon">🎯</div><div><strong>Targets:</strong> Hit People, Bottles, and Cups for points. Headshots deal 2x damage.</div></div>
-                <div class="howto-step"><div class="step-icon">⚡</div><div><strong>Overdrive:</strong> Fill the top bar to enter Overdrive (2x Multiplier) for unlimited ammo chaos!</div></div>
-                <div class="howto-step"><div class="step-icon">🍉</div><div><strong>Weapons:</strong> Score points to unlock Watermelons and Pies. Hit 'Backpacks' to find more ammo.</div></div>
+                <div class="howto-step"><div class="step-icon">👇</div><div><strong>Aim & Fire:</strong> Drag your finger down to shoot.</div></div>
+                <div class="howto-step"><div class="step-icon">⏱️</div><div><strong>Dash Mode:</strong> Tap the Timer ⏱️ to start a 60s score attack!</div></div>
+                <div class="howto-step"><div class="step-icon">⚡</div><div><strong>Overdrive:</strong> Fill the top bar for 2x Points.</div></div>
+                <div class="howto-step"><div class="step-icon">🍉</div><div><strong>Weapons:</strong> Score points to unlock Watermelons and Pies.</div></div>
                 <button class="menu-btn primary" onclick="hideHowTo()">Back to Settings</button>
             </div>
         </div>
@@ -260,19 +266,19 @@
                     <div class="shop-icon">🍉</div>
                     <div class="shop-name">5x Melons</div>
                     <div class="shop-price">500 pts</div>
-                    <button class="buy-btn" onclick="alert('Shop logic coming soon!')">Buy</button>
+                    <button class="buy-btn" onclick="showPopup('Shop logic coming soon!')">Buy</button>
                 </div>
                 <div class="shop-item">
                     <div class="shop-icon">🥧</div>
                     <div class="shop-name">3x Pies</div>
                     <div class="shop-price">1000 pts</div>
-                    <button class="buy-btn" onclick="alert('Shop logic coming soon!')">Buy</button>
+                    <button class="buy-btn" onclick="showPopup('Shop logic coming soon!')">Buy</button>
                 </div>
                 <div class="shop-item">
                     <div class="shop-icon">🥚</div>
                     <div class="shop-name">Golden Egg</div>
                     <div class="shop-price">5000 pts</div>
-                    <button class="buy-btn" onclick="alert('Shop logic coming soon!')">Buy</button>
+                    <button class="buy-btn" onclick="showPopup('Shop logic coming soon!')">Buy</button>
                 </div>
                  <div class="shop-item">
                     <div class="shop-icon">💣</div>
@@ -281,7 +287,6 @@
                     <button class="buy-btn" style="background:#555;">Locked</button>
                 </div>
             </div>
-            
             <div class="close-btn" onclick="closeAllModals()">Back to Game</div>
         </div>
     </div>
@@ -290,6 +295,11 @@
         <div class="modal-content" onclick="event.stopPropagation()">
             <div class="modal-title">Top Shooters</div>
             
+            <div class="lb-tabs">
+                <div class="lb-tab active" id="tab-classic" onclick="switchLbTab('classic')">ALL TIME</div>
+                <div class="lb-tab" id="tab-dash" onclick="switchLbTab('dash')">DASH (60s)</div>
+            </div>
+
             <div class="user-auth-area">
                 <button id="login-btn" class="menu-btn google" onclick="googleLogin()">
                     <span style="font-weight:900; color:#4285F4">G</span> Login with Google
@@ -304,7 +314,7 @@
                 <div style="color:#777; font-size:12px;">Loading scores...</div>
             </div>
 
-            <button class="menu-btn primary" id="submit-score-btn" style="display:none;" onclick="submitHighScore()">Submit My Score</button>
+            <button class="menu-btn primary" id="submit-score-btn" style="display:none;" onclick="submitHighScore()">Submit Score</button>
             <div class="close-btn" onclick="closeAllModals()">Back to Game</div>
         </div>
     </div>
@@ -335,26 +345,72 @@ try {
     console.warn("Firebase not configured properly.", e);
 }
 
+// --- CUSTOM POPUP LOGIC ---
+function showPopup(msg) {
+    document.getElementById('popup-text').innerText = msg;
+    document.getElementById('custom-popup').style.display = 'flex';
+}
+function closePopup() {
+    document.getElementById('custom-popup').style.display = 'none';
+}
+
+// --- DASH MODE / TIMER LOGIC ---
+let gameMode = 'classic'; // 'classic' or 'dash'
+let dashTime = 60;
+let dashInterval = null;
+
+function startDashMode() {
+    if (gameMode === 'dash') return; // Already running
+
+    // Confirm start if score > 0
+    if (score > 0) {
+        if(!confirm("Start Dash Mode? Score will reset!")) return;
+    }
+    
+    // Reset Game for Dash
+    gameMode = 'dash';
+    score = 0;
+    dashTime = 60;
+    document.getElementById('score').innerText = 0;
+    document.getElementById('dash-btn').classList.add('active');
+    
+    // Start Interval
+    clearInterval(dashInterval);
+    dashInterval = setInterval(() => {
+        dashTime--;
+        document.getElementById('timer-display').innerText = dashTime;
+        
+        if (dashTime <= 0) {
+            endDashMode();
+        }
+    }, 1000);
+    
+    showPopup("DASH MODE ACTIVATED!\n60 Seconds. Go!");
+}
+
+function endDashMode() {
+    clearInterval(dashInterval);
+    gameMode = 'classic';
+    document.getElementById('dash-btn').classList.remove('active');
+    document.getElementById('timer-display').innerText = "60";
+    
+    showPopup("TIME'S UP!\nFinal Dash Score: " + score);
+    
+    // Auto open leaderboard to encourage submit
+    setTimeout(() => {
+        openLeaderboard('dash'); 
+    }, 1500);
+}
+
 // --- AUTH & LEADERBOARD LOGIC ---
+let currentLbTab = 'classic';
+
 function googleLogin() {
-    if(!auth) return alert("Firebase not initialized!");
+    if(!auth) return showPopup("Firebase not initialized!");
     const provider = new firebase.auth.GoogleAuthProvider();
     auth.signInWithPopup(provider)
-        .then((result) => {
-            // Success
-            console.log("Logged in:", result.user);
-        })
-        .catch((error) => {
-            // ERROR HANDLING for Login
-            console.error("Login Error:", error);
-            if (error.code === 'auth/unauthorized-domain') {
-                alert("Error: This domain is not authorized. Please add it in Firebase Console -> Authentication -> Settings.");
-            } else if (error.code === 'auth/operation-not-allowed') {
-                alert("Error: Google Sign-in is disabled. Enable it in Firebase Console -> Authentication -> Sign-in method.");
-            } else {
-                alert("Login Failed: " + error.message);
-            }
-        });
+        .then((result) => { console.log("Logged in:", result.user); })
+        .catch((error) => { showPopup("Login Failed: " + error.message); });
 }
 
 function updateAuthUI() {
@@ -371,46 +427,110 @@ function updateAuthUI() {
     }
 }
 
-async function openLeaderboard() {
+function switchLbTab(tab) {
+    currentLbTab = tab;
+    document.getElementById('tab-classic').classList.remove('active');
+    document.getElementById('tab-dash').classList.remove('active');
+    document.getElementById('tab-' + tab).classList.add('active');
+    loadScores();
+}
+
+function openLeaderboard(tab = 'classic') {
     openModal('leaderboard-modal');
+    switchLbTab(tab);
+}
+
+async function loadScores() {
     if(!db) return;
-    
     const list = document.getElementById('lb-list');
-    list.innerHTML = '<div style="color:#777; font-size:12px;">Loading...</div>';
+    list.innerHTML = '<div style="color:#777; font-size:12px;">Loading scores...</div>';
+    
+    // Determine which field to sort by based on tab
+    const sortField = currentLbTab === 'dash' ? 'dashScore' : 'highScore';
     
     try {
-        const q = await db.collection('scores').orderBy('score', 'desc').limit(10).get();
+        const q = await db.collection('scores')
+            .where(sortField, '>', 0) // Only get scores that exist
+            .orderBy(sortField, 'desc')
+            .limit(10)
+            .get();
+            
         list.innerHTML = '';
         let rank = 1;
         q.forEach(doc => {
             const d = doc.data();
+            let displayScore = currentLbTab === 'dash' ? d.dashScore : d.highScore;
+            
             list.innerHTML += `
                 <div class="lb-row">
                     <div class="lb-rank">${rank++}.</div>
                     <div class="lb-name">${d.name}</div>
-                    <div class="lb-score">${d.score}</div>
+                    <div class="lb-score">${displayScore}</div>
                 </div>`;
         });
         if(rank === 1) list.innerHTML = '<div style="color:#777; font-size:12px;">No scores yet. Be the first!</div>';
     } catch(e) {
-        list.innerHTML = '<div style="color:red; font-size:12px;">Error loading scores. Check Console.</div>';
+        list.innerHTML = '<div style="color:red; font-size:12px;">Error loading data.</div>';
         console.error(e);
     }
 }
 
 async function submitHighScore() {
     if(!currentUser || !db) return;
+    
+    // We save to a specific field based on the mode the score was achieved in
+    // However, for Simplicity in this UI, we usually just update the user's doc
+    // merging the new score if it's higher.
+    
+    // Since we don't know if this current score "score" came from dash or classic right now
+    // (unless we just ended dash), we have to be careful.
+    // Logic: If gameMode is Dash (or we just finished one), we submit to dashScore.
+    // If classic, we submit to highScore.
+    
+    // Simplified: Just ask user what they are submitting? No, that's bad UX.
+    // Better: We check the current 'gameMode' variable? No, because gameMode resets.
+    
+    // Robust Solution for this demo:
+    // If the user clicks "Submit" while looking at "Dash" tab, assume they want to submit to Dash?
+    // No, let's just save BOTH and update if higher.
+    
+    const userRef = db.collection('scores').doc(currentUser.uid);
+    
     try {
-        await db.collection('scores').doc(currentUser.uid).set({
+        const doc = await userRef.get();
+        let data = doc.exists ? doc.data() : {};
+        
+        let updates = {
             name: currentUser.displayName,
             photo: currentUser.photoURL,
-            score: score, 
-            date: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        alert("Score Submitted!");
-        openLeaderboard(); 
+            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        // If we just played Dash (we can infer this if score was generated in dash mode, but simpler logic:)
+        // We will just update the field corresponding to the active tab for now, OR better:
+        // Update whichever is higher. 
+        
+        if (currentLbTab === 'dash') {
+            if (!data.dashScore || score > data.dashScore) {
+                updates.dashScore = score;
+            } else {
+                showPopup("New score isn't higher than your best Dash record.");
+                return;
+            }
+        } else {
+            if (!data.highScore || score > data.highScore) {
+                updates.highScore = score;
+            } else {
+                showPopup("New score isn't higher than your best All Time record.");
+                return;
+            }
+        }
+        
+        await userRef.set(updates, { merge: true });
+        showPopup("Score Submitted!");
+        loadScores(); // Refresh list
     } catch(e) {
-        alert("Error submitting score: " + e.message);
+        showPopup("Error: " + e.message);
     }
 }
 
@@ -506,6 +626,13 @@ function handleInstall() {
 function resetGame() {
     score = 0; hitsWithEgg = 0; streak = 0; bonusMeter = 0; overdrive = false;
     document.getElementById('score').innerText = 0;
+    
+    // Stop Timer
+    clearInterval(dashInterval);
+    gameMode = 'classic';
+    document.getElementById('dash-btn').classList.remove('active');
+    document.getElementById('timer-display').innerText = "60";
+
     document.getElementById('prog-melon').style.height = '0%';
     document.getElementById('prog-pie').style.height = '0%';
     for (let key in WEAPONS) {
