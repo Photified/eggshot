@@ -9,6 +9,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#000000">
     
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; touch-action: none; user-select: none; }
         
@@ -30,20 +34,30 @@
             display: flex; justify-content: space-between; align-items: flex-start; box-sizing: border-box;
         }
 
+        .left-icons { display: flex; gap: 10px; pointer-events: auto; }
+        .right-icons { display: flex; gap: 10px; pointer-events: auto; }
+
+        .icon-btn {
+            background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
+            width: 44px; height: 44px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; color: white; cursor: pointer; transition: transform 0.1s;
+        }
+        .icon-btn:active { transform: scale(0.9); background: rgba(255,255,255,0.2); }
+
         .score-container {
             background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
             padding: 8px 16px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2);
             color: white; transition: transform 0.2s;
+            position: absolute; left: 50%; transform: translateX(-50%); top: 0;
         }
         .score-label { font-size: 10px; color: #aaa; font-weight: 700; text-transform: uppercase; }
         .score-val { font-size: 32px; font-weight: 800; line-height: 1; margin-top: 2px; }
-        
-        /* Overdrive Visuals */
         .score-val.overdrive { color: #ffeb3b; text-shadow: 0 0 15px #ffeb3b; }
 
         /* Bonus Meter */
         #meter-container {
-            position: absolute; top: 25px; left: 50%; transform: translateX(-50%);
+            position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
             width: 140px; height: 10px; background: rgba(0,0,0,0.5);
             border-radius: 20px; border: 1px solid rgba(255,255,255,0.3); overflow: hidden;
         }
@@ -54,34 +68,25 @@
             transition: width 0.1s linear;
         }
         #overdrive-text {
-            position: absolute; top: 40px; left: 50%; transform: translateX(-50%);
+            position: absolute; top: 75px; left: 50%; transform: translateX(-50%);
             color: #ffeb3b; font-size: 10px; font-weight: 900; text-transform: uppercase;
             letter-spacing: 2px; opacity: 0; transition: opacity 0.3s;
         }
 
-        /* Settings Icon */
-        #settings-trigger {
-            background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
-            width: 44px; height: 44px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 24px; color: white; pointer-events: auto; cursor: pointer;
-        }
-
-        /* Settings Modal */
-        #settings-modal {
+        /* MODALS (Shared Styles) */
+        .modal-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(10px);
             display: none; align-items: center; justify-content: center; z-index: 100;
         }
-
         .modal-content {
-            background: rgba(30, 30, 30, 0.95); width: 80%; max-width: 320px;
+            background: rgba(30, 30, 30, 0.95); width: 85%; max-width: 340px; max-height: 80vh;
             padding: 24px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.15);
             text-align: center; color: white; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            overflow-y: auto; position: relative;
         }
-
-        .modal-title { font-size: 20px; font-weight: 800; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; }
-
+        .modal-title { font-size: 20px; font-weight: 800; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; color: #ffeb3b; }
+        
         .menu-btn {
             width: 100%; padding: 14px; margin: 8px 0; border-radius: 12px;
             background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1);
@@ -90,8 +95,39 @@
         }
         .menu-btn:active { transform: scale(0.96); background: rgba(255,255,255,0.15); }
         .menu-btn.primary { background: #ffeb3b; color: #000; border: none; }
-
+        .menu-btn.google { background: #fff; color: #333; display: flex; align-items: center; justify-content: center; gap: 10px;}
         .close-btn { margin-top: 15px; color: #777; font-size: 12px; font-weight: bold; text-transform: uppercase; cursor: pointer; }
+
+        /* SHOP STYLES */
+        .shop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .shop-item {
+            background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
+            padding: 10px; display: flex; flex-direction: column; align-items: center;
+        }
+        .shop-icon { font-size: 30px; margin-bottom: 5px; }
+        .shop-name { font-size: 12px; font-weight: bold; color: #ccc; }
+        .shop-price { font-size: 11px; color: #ffeb3b; margin: 5px 0; }
+        .buy-btn {
+            background: #4caf50; color: white; border: none; border-radius: 50px;
+            padding: 5px 15px; font-size: 10px; font-weight: bold; width: 100%; cursor: pointer;
+        }
+
+        /* LEADERBOARD STYLES */
+        .lb-list { text-align: left; margin-bottom: 15px; max-height: 200px; overflow-y: auto; }
+        .lb-row { 
+            display: flex; justify-content: space-between; padding: 8px 0; 
+            border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 13px;
+        }
+        .lb-rank { color: #ffeb3b; font-weight: bold; width: 25px; }
+        .lb-name { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .lb-score { font-weight: bold; }
+        .user-auth-area { margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; }
+        #user-profile { display: none; align-items: center; gap: 10px; justify-content: center; }
+        #user-avatar { width: 30px; height: 30px; border-radius: 50%; }
+
+        /* HOW TO STYLES */
+        .howto-step { text-align: left; margin-bottom: 15px; font-size: 13px; color: #ddd; line-height: 1.4; display: flex; gap: 10px; }
+        .step-icon { font-size: 18px; min-width: 25px; }
 
         .streak-badge {
             background: linear-gradient(45deg, #ff9800, #ff5722);
@@ -148,17 +184,25 @@
     
     <div id="hud">
         <div class="top-bar">
+            <div class="left-icons">
+                <div class="icon-btn" onclick="openModal('settings-modal')">⚙️</div>
+                <div class="icon-btn" onclick="openModal('shop-modal')">🛒</div>
+            </div>
+
             <div class="score-container" id="score-box">
                 <div class="score-label">Score</div>
                 <div class="score-val" id="score">0</div>
             </div>
-            <div id="settings-trigger" onclick="openSettings()">⚙️</div>
+
+            <div class="right-icons">
+                <div class="icon-btn" onclick="openLeaderboard()">🏆</div>
+            </div>
         </div>
 
         <div id="meter-container"><div id="meter-fill"></div></div>
         <div id="overdrive-text">OVERDRIVE 2X</div>
 
-        <div class="streak-badge" id="streak-badge" style="position: absolute; top: 80px; left: 20px;">COMBO x2</div>
+        <div class="streak-badge" id="streak-badge" style="position: absolute; top: 100px; left: 20px;">COMBO x2</div>
         <div id="unlock-msg">WEAPON UNLOCKED!</div>
 
         <div id="weapon-bar">
@@ -181,17 +225,195 @@
         <div id="instructions">Drag Down to Launch</div>
     </div>
 
-    <div id="settings-modal" onclick="closeSettings(event)">
+    <div id="settings-modal" class="modal-overlay" onclick="closeAllModals(event)">
         <div class="modal-content" onclick="event.stopPropagation()">
-            <div class="modal-title">Settings</div>
-            <button class="menu-btn" id="sound-toggle" onclick="toggleSound()">Sound: ON</button>
-            <button class="menu-btn primary" id="install-btn" style="display:none;" onclick="handleInstall()">Install App</button>
-            <button class="menu-btn" onclick="resetGame()">Reset Game</button>
-            <div class="close-btn" onclick="closeSettings()">Back to Game</div>
+            <div id="settings-view">
+                <div class="modal-title">Settings</div>
+                <button class="menu-btn" id="sound-toggle" onclick="toggleSound()">Sound: ON</button>
+                <button class="menu-btn" onclick="showHowTo()">How To Play</button>
+                <button class="menu-btn primary" id="install-btn" style="display:none;" onclick="handleInstall()">Install App</button>
+                <button class="menu-btn" onclick="resetGame()">Reset Game</button>
+                <div class="close-btn" onclick="closeAllModals()">Back to Game</div>
+            </div>
+
+            <div id="howto-view" style="display:none;">
+                <div class="modal-title">How To Play</div>
+                <div class="howto-step"><div class="step-icon">👇</div><div><strong>Aim & Fire:</strong> Drag your finger down on the screen to pull back the slingshot. Release to fire!</div></div>
+                <div class="howto-step"><div class="step-icon">🎯</div><div><strong>Targets:</strong> Hit People, Bottles, and Cups for points. Headshots deal 2x damage.</div></div>
+                <div class="howto-step"><div class="step-icon">⚡</div><div><strong>Overdrive:</strong> Fill the top bar to enter Overdrive (2x Multiplier) for unlimited ammo chaos!</div></div>
+                <div class="howto-step"><div class="step-icon">🍉</div><div><strong>Weapons:</strong> Score points to unlock Watermelons and Pies. Hit 'Backpacks' to find more ammo.</div></div>
+                <button class="menu-btn primary" onclick="hideHowTo()">Back to Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="shop-modal" class="modal-overlay" onclick="closeAllModals(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-title">Ammo Shop</div>
+            <div style="font-size:12px; color:#aaa; margin-bottom:15px;">Spend your score to buy extra ammo! (Coming Soon)</div>
+            
+            <div class="shop-grid">
+                <div class="shop-item">
+                    <div class="shop-icon">🍉</div>
+                    <div class="shop-name">5x Melons</div>
+                    <div class="shop-price">500 pts</div>
+                    <button class="buy-btn" onclick="alert('Shop logic coming soon!')">Buy</button>
+                </div>
+                <div class="shop-item">
+                    <div class="shop-icon">🥧</div>
+                    <div class="shop-name">3x Pies</div>
+                    <div class="shop-price">1000 pts</div>
+                    <button class="buy-btn" onclick="alert('Shop logic coming soon!')">Buy</button>
+                </div>
+                <div class="shop-item">
+                    <div class="shop-icon">🥚</div>
+                    <div class="shop-name">Golden Egg</div>
+                    <div class="shop-price">5000 pts</div>
+                    <button class="buy-btn" onclick="alert('Shop logic coming soon!')">Buy</button>
+                </div>
+                 <div class="shop-item">
+                    <div class="shop-icon">💣</div>
+                    <div class="shop-name">Bomb</div>
+                    <div class="shop-price">Locked</div>
+                    <button class="buy-btn" style="background:#555;">Locked</button>
+                </div>
+            </div>
+            
+            <div class="close-btn" onclick="closeAllModals()">Back to Game</div>
+        </div>
+    </div>
+
+    <div id="leaderboard-modal" class="modal-overlay" onclick="closeAllModals(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-title">Top Shooters</div>
+            
+            <div class="user-auth-area">
+                <button id="login-btn" class="menu-btn google" onclick="googleLogin()">
+                    <span style="font-weight:900; color:#4285F4">G</span> Login with Google
+                </button>
+                <div id="user-profile">
+                    <img id="user-avatar" src="" alt="">
+                    <div id="user-name" style="font-size:14px; font-weight:bold;">Player</div>
+                </div>
+            </div>
+
+            <div class="lb-list" id="lb-list">
+                <div style="color:#777; font-size:12px;">Loading scores...</div>
+            </div>
+
+            <button class="menu-btn primary" id="submit-score-btn" style="display:none;" onclick="submitHighScore()">Submit My Score</button>
+            <div class="close-btn" onclick="closeAllModals()">Back to Game</div>
         </div>
     </div>
 
 <script>
+// --- FIREBASE CONFIGURATION ---
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyAbBGS-VPX5Dk8w9muR8RdTWTArsur211U",
+  authDomain: "eggshot-ar.firebaseapp.com",
+  projectId: "eggshot-ar",
+  storageBucket: "eggshot-ar.firebasestorage.app",
+  messagingSenderId: "589796886773",
+  appId: "1:589796886773:web:2d3c4e116471e509e4ddbc"
+};
+
+// Initialize Firebase
+let db, auth, currentUser;
+try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    auth = firebase.auth();
+    
+    auth.onAuthStateChanged(user => {
+        currentUser = user;
+        updateAuthUI();
+    });
+} catch (e) {
+    console.warn("Firebase not configured yet. Leaderboard disabled.");
+}
+
+// --- AUTH & LEADERBOARD LOGIC ---
+function googleLogin() {
+    if(!auth) return alert("Firebase not configured!");
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithPopup(provider).catch(e => alert(e.message));
+}
+
+function updateAuthUI() {
+    if(currentUser) {
+        document.getElementById('login-btn').style.display = 'none';
+        document.getElementById('user-profile').style.display = 'flex';
+        document.getElementById('user-avatar').src = currentUser.photoURL;
+        document.getElementById('user-name').innerText = currentUser.displayName.split(' ')[0];
+        document.getElementById('submit-score-btn').style.display = 'block';
+    } else {
+        document.getElementById('login-btn').style.display = 'flex';
+        document.getElementById('user-profile').style.display = 'none';
+        document.getElementById('submit-score-btn').style.display = 'none';
+    }
+}
+
+async function openLeaderboard() {
+    openModal('leaderboard-modal');
+    if(!db) return;
+    
+    const list = document.getElementById('lb-list');
+    list.innerHTML = '<div style="color:#777; font-size:12px;">Loading...</div>';
+    
+    try {
+        const q = await db.collection('scores').orderBy('score', 'desc').limit(10).get();
+        list.innerHTML = '';
+        let rank = 1;
+        q.forEach(doc => {
+            const d = doc.data();
+            list.innerHTML += `
+                <div class="lb-row">
+                    <div class="lb-rank">${rank++}.</div>
+                    <div class="lb-name">${d.name}</div>
+                    <div class="lb-score">${d.score}</div>
+                </div>`;
+        });
+    } catch(e) {
+        list.innerHTML = '<div style="color:red; font-size:12px;">Error loading scores. Check Console.</div>';
+        console.error(e);
+    }
+}
+
+async function submitHighScore() {
+    if(!currentUser || !db) return;
+    try {
+        await db.collection('scores').doc(currentUser.uid).set({
+            name: currentUser.displayName,
+            photo: currentUser.photoURL,
+            score: score, // Global game score variable
+            date: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        alert("Score Submitted!");
+        openLeaderboard(); // Refresh list
+    } catch(e) {
+        alert("Error submitting score: " + e.message);
+    }
+}
+
+// --- UI HELPERS ---
+function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+function closeAllModals() { 
+    document.querySelectorAll('.modal-overlay').forEach(el => el.style.display = 'none'); 
+    // Reset views
+    document.getElementById('settings-view').style.display = 'block';
+    document.getElementById('howto-view').style.display = 'none';
+}
+
+function showHowTo() {
+    document.getElementById('settings-view').style.display = 'none';
+    document.getElementById('howto-view').style.display = 'block';
+}
+function hideHowTo() {
+    document.getElementById('howto-view').style.display = 'none';
+    document.getElementById('settings-view').style.display = 'block';
+}
+
 // --- AUDIO SYSTEM ---
 let audioCtx = null;
 let soundEnabled = true;
@@ -260,12 +482,9 @@ function handleInstall() {
     deferredPrompt.userChoice.then((choiceResult) => {
         deferredPrompt = null;
         installBtn.style.display = 'none';
-        closeSettings();
+        closeAllModals();
     });
 }
-
-function openSettings() { document.getElementById('settings-modal').style.display = 'flex'; }
-function closeSettings(e) { document.getElementById('settings-modal').style.display = 'none'; }
 
 function resetGame() {
     score = 0; hitsWithEgg = 0; streak = 0; bonusMeter = 0; overdrive = false;
@@ -277,7 +496,7 @@ function resetGame() {
     }
     currentWeapon = 'egg';
     updateWeaponUI();
-    closeSettings();
+    closeAllModals();
 }
 
 // --- CONFIG ---
@@ -292,11 +511,11 @@ const TARGETS = {
     'handbag':  { label: 'AMMO',    color: '#2196f3', hp: 30, ammoType: 'pie', amount: 3 }
 };
 
-// --- WEAPON DEFINITIONS (FASTER UNLOCKS) ---
+// --- WEAPON DEFINITIONS ---
 let WEAPONS = {
     egg:    { id: 'egg',    gravity: 0.85, damage: 15,  speed: 60, ammo: -1, unlock: 0 },
-    melon:  { id: 'melon',  gravity: 1.3,  damage: 60,  speed: 45, ammo: 0,  unlock: 100 }, // Unlock at 100
-    pie:    { id: 'pie',    gravity: 2.0,  damage: 200, speed: 40, ammo: 0,  unlock: 300 }  // Unlock at 300
+    melon:  { id: 'melon',  gravity: 1.3,  damage: 60,  speed: 45, ammo: 0,  unlock: 100 },
+    pie:    { id: 'pie',    gravity: 2.0,  damage: 200, speed: 40, ammo: 0,  unlock: 300 }
 };
 
 let currentWeapon = 'egg';
